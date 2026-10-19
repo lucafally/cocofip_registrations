@@ -1,0 +1,172 @@
+registration B job 12259551 at 2026-10-18T01:23:17+02:00 on vipa1002
+git HEAD a8b23d672219261452c17cfbd501c4a17b573fbd
+4d5472d5628c4c319d7148456c584d999c33d37985f5a17ac4a46f2f35b3992e  /viper/u2/lfall/flows_for_mc_example/docs/sbibm_benchmark_registered.yaml
+f0a7dd6ef79a57eae81d220b27107c8bde567ab340b9785647ee6675990d5708  /viper/u2/lfall/flows_for_mc_example/configs/sbibm/study_v1.yaml
+----- content -----
+# Registered predictions of the sbibm benchmark study (docs/sbibm_benchmark_plan.md; lane docs/sbibm_benchmark.md).
+# The git timestamp of this file and the registration stamp jobs (scripts/results/sbibm_bench/registration/
+# A_stamp.json, B_stamp.json; shell_scripts/submit_sbibm_study.py --stage stamp) are the registration.
+# Status of a prediction: draft (bands provisional, may change until the stamp) | registered (frozen by stamp A/B,
+# not submitted) | graded (verdict in the lane's Log). Graded predictions stay here with their verdict line.
+lane: sbibm_benchmark.md
+plan: sbibm_benchmark_plan.md
+config: configs/sbibm/study_v1.yaml
+scope: >
+  sbibm tasks two_moons, gaussian_mixture, sir, lotka_volterra, slcp (gaussian_linear_uniform optional);
+  arms none (= FMPE), mbot, c2ot, cotfm_l{30,100,400,1000} (audit-selected lambda = comparison row),
+  kr_qot (KR-AQCOT, recipe locscale_id_e4_c256 = the audit-selected production recipe decided 2026-10-16 — the pilot ran
+  locscale_id; identity order unless stated), coupler_sampler; budgets 1e3 / 1e4 / 1e5
+  (official) and unlimited (1e7 draws); 10 flow seeds per cell (3 data / coupler replicas, flow seed k uses data
+  seed k mod 3); parameter space "unconstrained" (sbibm's biject_to(prior.support) + z-scoring) unless stated.
+  Headline statistic per run: mean over the 10 reference observations of sbibm's C2ST at dopri5 1e-5 ("converged");
+  seeds are the replication unit; Mann-Whitney one-sided over seeds, uncorrected, stated as such. "distance" =
+  |C2ST - 0.5|. Matched-quality NFE = smallest fixed-step Euler NFE with C2ST within 0.01 of the arm's own converged
+  value. Audit statistics: scripts/sbibm_study.py audit (worst-axis sliced-W1 imprint of the induced source in
+  base-sigma units over 24 equal-count bins of each context axis; per-stage 1D imprint; harm flag at 0.05).
+framing: >
+  Bands below are the review plan's (docs/qot_strengthening_plan.md A/B, 2026-10-14) and are PROVISIONAL until the
+  two-moons / SLCP pilot has run; the pilot is used to fix the bands, never to pick the direction of a claim.
+  Freezing = stamp A (before any full-wave flow is submitted). Study B is frozen by stamp B, which includes the
+  audit JSONs of the three recipes per task, before any study-B flow is trained; stamp B is also published
+  (plan doc, "Public pre-registration").
+predictions:
+  - id: P-A1
+    registered: 2026-10-14
+    status: registered   # frozen by stamp A, 2026-10-16 (bands as amended in pilot_freezes)
+    claim: at 1e3 simulations the coupled flow (kr_qot) is NOT better than independent on any task; the held-out audit flags harm wherever it is clearly worse
+    bands:
+      distance_ratio_coupled_over_indep_at_1e3: "in [0.95, 1.3] on every task (median over seeds)"
+      audit_harm_where_ratio_exceeds_1p15: "worst-axis imprint > 0.05 for every task with ratio > 1.15"
+    falsified_if: "coupling WINS at 1e3 (ratio < 0.95 and Mann-Whitney p < 0.05) on >= 3 tasks — the audit's small-data story is wrong, which is itself a result"
+  - id: P-A2
+    registered: 2026-10-14
+    status: registered   # frozen by stamp A, 2026-10-16 (bands as amended in pilot_freezes)
+    claim: few-NFE at 1e5 and unlimited — kr_qot reaches matched quality at <= 1/3 the Euler NFE of independent on every task, and is the best arm on >= 4 of 5 tasks
+    bands:
+      # frozen 2026-10-15 from the pilot (lane Log 2026-10-15 c): the review plan's upper edge 6 was wrong — the
+      # independent arm needs 64-128 Euler steps to match its converged C2ST, so ratios of 8-32 are what the extended
+      # ladder measures; the claim has no upper bound. Lower edge and kill criterion unchanged. The grader was aligned
+      # (it required >= 3, the text said 1/3). Headline tier per budget: eval.headline_tier of the config (best at 1e5).
+      nfe_ratio_indep_over_kr: ">= 2 on every (task, budget) cell of the two budgets (no upper edge)"
+      kr_best_arm_cells: ">= 4 of 5 tasks at each budget"
+    falsified_if: "ratio < 2 on >= 2 cells — the sbibm section becomes a negative result and the Gaussian ladder stays the D > 1 headline (plan N, phase 2 gate)"
+  - id: P-A3
+    registered: 2026-10-14
+    status: registered   # frozen by stamp A, 2026-10-16 (bands as amended in pilot_freezes)
+    claim: converged parity at unlimited — kr_qot within 0.02 C2ST of independent on every task, significantly below on >= 2 (Mann-Whitney 10 v 10, uncorrected)
+    bands:
+      delta_median_c2st_kr_minus_indep: "in [-0.05, +0.02] on every task"
+      n_tasks_significantly_below: ">= 2"
+    falsified_if: "significantly ABOVE independent on >= 2 tasks"
+  - id: P-A4
+    registered: 2026-10-14
+    status: registered   # frozen by stamp A, 2026-10-16 (bands as amended in pilot_freezes)
+    claim: the conditioned per-batch baselines (c2ot, cotfm) pay 20-50x the per-batch coupling wall of kr_qot and reach parity at convergence; C2OT's adaptive weight collapses at d_c = 20 (lotka_volterra) as it did at d_c = 8 on the RFF toys
+    bands:
+      # frozen 2026-10-15: measured 6-34x with POT single-threaded (the 20-50x of the review plan assumed the toy
+      # studies' walls against a 2.5 ms sort; KR's sort costs 7.3 ms at D = 5 and the serial EMD 42-100 ms)
+      wall_ratio_per_batch: "in [5, 40] at batch 1024 (unlimited track; in-run medians of c2ot / cotfm vs kr_qot)"
+      c2ot_weight_lotka_volterra: "last adaptive weight < 10 (collapsed toward the unconditional plan)"
+    falsified_if: "none (descriptive); reported as measured"
+  - id: P-A5
+    registered: 2026-10-14
+    status: registered   # frozen by stamp A, 2026-10-16 (bands as amended in pilot_freezes)
+    claim: the coupler alone as a sampler (NQE-like) is worse than the coupled flow at unlimited data on every task
+    bands:
+      delta_median_c2st_sampler_minus_flow: ">= 0.03 on every task"
+    falsified_if: "< 0.03 on >= 2 tasks — then 'why not sample from the coupler' needs the density / NFE answer only"
+  - id: P-A6
+    registered: 2026-10-14
+    status: registered   # frozen by stamp A, 2026-10-16 (bands as amended in pilot_freezes)
+    claim: order sensitivity — on slcp (orders 0,1,2,3,4 and 4,3,2,1,0) and lotka_volterra (0,1,2,3 and 3,2,1,0) the two KR coordinate orders differ by <= 1.2x in converged distance
+    bands:
+      distance_spread_between_orders: "<= 1.2 on both tasks (median over 10 seeds each)"
+    falsified_if: "> 1.5 on either task — the order is a hyperparameter and the paper says so"
+  - id: P-B1
+    registered: 2026-10-14
+    status: draft
+    claim: study B — the held-out audit's ordering of four KR recipes (box, locscale, locscale_id, and the production recipe locscale_id_e4_c256, added 2026-10-16 before stamp B) by worst-axis imprint matches the ordering of their coupled flows' converged distance on slcp and lotka_volterra (unlimited track; audits stamped and published before the flows are trained)
+    bands:
+      spearman_over_recipe_points: ">= +0.8 (worst-axis imprint) over ONE point per (task, recipe) — 4 recipes x 2 tasks = 8 points, the data seeds / couplers of a recipe pooled by the median (the grader was aligned to this unit 2026-10-16; its first version took one point per coupler); the per-task rho and the per-stage max imprint are reported alongside. Pilot read on two moons + slcp (cplvar, 6 recipes, NOT study B): pooled +0.62, per task +0.83 / +0.77"
+    falsified_if: "an inverted ordering (rho < 0) on BOTH tasks; a null ordering among healthy recipes (all imprints below the harm threshold) is the registered alternative outcome and goes in the paper as the audit's domain of validity"
+  - id: P-B2
+    registered: 2026-10-14
+    status: draft
+    claim: study B — no false harm flag (a recipe flagged at > 0.05 whose coupled flow is within 5 % of the best recipe's distance)
+    bands:
+      n_false_flags: "0"
+    falsified_if: ">= 1 false flag"
+pilot_freezes:   # what the two-moons / SLCP pilot decides BEFORE stamp A (plan doc, Open decisions)
+  - primary parameter transform (unconstrained vs identity + rejection), the other becomes the disclosed control
+  - model width (max_hidden_dim 256 vs 512) if the pilot's independent arm is clearly capacity-limited on SLCP
+  - lotka_volterra context preprocessing (identity vs log) — identity unless the pilot's independent arm fails
+  - the numeric bands above (direction and kill criteria stay as written)
+  # decided 2026-10-15 from the pilot's first look + the EMD probe (lane Log 2026-10-15 b), before stamp A:
+  - "official budgets: fixed step budgets, 10 % of the simulations held out as the validation split (the coupler's split; sbi practice), NO early stopping; the diagnostic history (val FM loss, reference probe) is reported as final vs minimum"
+  - "time sampler: uniform t throughout (schedule none); the pilot's cosine schedule was a hidden t -> 1 curriculum"
+  - "exact-EMD arms: POT emd single-threaded (num_threads 1); chained stages with checkpoint_last.pt"
+  - "solver ladder: euler 2-128, midpoint 2-16; the metric battery + reference NLL stored per (observation, solver)"
+  - "checkpoint tiers (user decision 2026-10-15): every run is evaluated at its LAST state (fixed step budget) and at its
+    BEST-validation-FM-loss state (the sbi / sbibm early-stopping checkpoint); both reported; the headline tier is best at
+    1e3 / 1e4 / 1e5 and last at unlimited (eval.headline_tier). The fixed 60 k / 20 k steps overfit every arm at the
+    official budgets (slcp 1e5: reference probe x6 from its minimum at 4-18 k steps)"
+  - "P-A3 stays as registered (parity band [-0.05, +0.02], kill = significantly above on >= 2 tasks) although the pilot
+    reads +0.022 / +0.048 above independent at unlimited (3 seeds, p = 0.05 both): a likely negative result, not a band
+    to widen. A coupler-variant wave (cplvar: recipe-of-record levers steps x4, context net [256]x3, box, locscale; both
+    transforms) runs BEFORE stamp A to test whether a better-fitted coupler closes the gap; whichever recipe the
+    held-out audit selects (the same truth-free rule as before) becomes the production recipe of the full wave"
+  - "parameter transform: unconstrained stays primary (the registered rule read at the converged track: none 0.502 /
+    0.612 vs identity 0.506 / 0.622); the identity control runs on none, kr_qot and the coupler variants"
+  # decided 2026-10-16 (user) after the coupler-variant wave and the tier wave (lane Log 2026-10-16), before stamp A:
+  - "production recipe: locscale_id_e4_c256 (pretrain steps x4 = the ~1e5-step knee of the recipe of record, context net
+    [256]x3), the recipe the held-out audit selects on both pilot tasks (worst-axis imprint 0.0000 / 0.0025); it closes the
+    pilot's converged deficit (coupled flow 0.505 vs independent 0.502 on two moons, 0.610 vs 0.612 on slcp, 3 seeds).
+    The pilot's locscale_id stays as a study-B recipe (the audit's positive case: an under-fitted coupler is a mild harm
+    the audit sees before the flow does). Kept simple: the tested settings, no 2x-steps variant"
+  - "P-A5 stays as registered (>= 0.03 on every task) although the selected recipe reads sampler - flow = +0.012 on two
+    moons at 3 seeds (+0.116 on slcp): a likely honest failing on two moons, reported as such, not re-banded"
+  - "checkpoint tiers: an EMA of the flow weights (training.ema_decay 0.999, a shadow copy) adds the tiers best_ema (EMA
+    weights at the EMA validation-loss argmin) and last_ema; the best tier of the raw weights is worse than the last state
+    on two moons (lane S6; the cosine learning-rate decay leaves every earlier checkpoint un-annealed). The `tiers` wave
+    (two moons 1e3 / 1e5 + slcp 1e5, none + kr_qot, 3 seeds, all four tiers) decides the headline tier at the official
+    budgets BEFORE stamp A by a rule fixed now: best_ema if its median C2ST is <= the last state's on every two-moons
+    cell and <= 0.82 on slcp 1e5 for the independent arm (i.e. it keeps the recovery of the best tier), else last; the
+    full wave evaluates the headline tier and last (eval.tiers)"
+  # decided 2026-10-16 by that rule (tiers wave, jobs 12241899-12241916, lane Log 2026-10-16 d), before stamp A:
+  - "headline tier = LAST at every budget: the rule's first clause fails (two moons 1e3, median converged C2ST: best_ema
+    0.716 / 0.740 vs last 0.682 / 0.655 for none / kr_qot; two moons 1e5 best_ema 0.509 / 0.531 vs last 0.506 / 0.529)
+    although the second holds (slcp 1e5 independent best_ema 0.751 vs best 0.796 vs last 0.898). Deviation from the
+    rule's last sentence, stated here before the stamp: the full wave evaluates [last, best_ema] (not [last] alone) so
+    the overfitting regime of the official budgets stays reported — the same two-evaluation cost as the pilot's protocol;
+    best_ema replaces best because it is never worse than best and far better on slcp 1e5. Predictions are graded on
+    the headline tier (last)"
+  - "study B gains the production recipe (4 recipes; its slcp / lotka_volterra production couplers and flows are the
+    full wave's kr_qot cells at unlimited, trained only after stamp B); the P-B1 grader uses one point per (task,
+    recipe)"
+                                  
+================================= 
+Global information about the job: 
+================================= 
+  
+Job owner: lfall(46040)
+Job name:  sb_stamp_B
+Node list: vipa1002
+Job start: Sun Oct 18 01:23:15 CEST 2026
+Job end:   Sun Oct 18 01:23:17 CEST 2026
+Work dir:  /viper/u2/lfall/flows_for_mc_example/shell_scripts
+Command:   /ptmp/lfall/sbibm_bench/jobs/sb_stamp_B.sh
+  
+  
+  
+==========================================================================================
+Information on jobsteps (Note: MaxRSS/AveRSS is the maximum/average over all 
+tasks of the per-task memory high-water marks; cf. "man sacct"): 
+==========================================================================================
+  
+JobID            JobName NNodes NTasks  NCPUS       MaxRSS       AveRSS    Elapsed ExitCode
+------------- ---------- ------ ------ ------ ------------ ------------ ---------- --------
+12259551      sb_stamp_B      1            48                             00:00:02      0:0
+  
+Maximum memory per node: 0.035452 GB (defined as MaxRSS*Ntasks/NNodes)
+CPU utilization: 0.0 %
+  

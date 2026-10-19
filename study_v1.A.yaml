@@ -1,0 +1,224 @@
+# sbibm benchmark study (docs/sbibm_benchmark_plan.md, lane docs/sbibm_benchmark.md).
+# Read by scripts/sbibm_study.py (every stage) and shell_scripts/submit_sbibm_study.py.
+# Registered predictions: docs/sbibm_benchmark_registered.yaml. Changing a value here
+# after the registration stamp is a protocol change and goes to the lane's Log.
+
+study: sbibm_bench
+out_root: /ptmp/lfall/sbibm_bench        # run dirs, datasets, couplers, job logs (inode-free)
+bundle_root: scripts/results/sbibm_bench  # the small, tracked-by-hand bundle (gitignored dir)
+reference_root: null                      # null = data_files/sbibm_reference (KANNELEON_SBIBM_REF)
+
+tasks: [two_moons, gaussian_mixture, sir, lotka_volterra, slcp, gaussian_linear_uniform]
+
+# parameter space the flow and the coupler are trained in (kanneleon.data.sbibm_tasks.ParamTransform)
+#   unconstrained: sbibm's biject_to(prior.support)^-1 (logit-affine on box priors, log on
+#                  positive ones) + z-scoring; every sample maps back inside the prior
+#   identity:      raw parameters + z-scoring; out-of-prior samples are REJECTED at sampling
+#                  time and the leakage recorded (sbi / sbibm-NPE practice)
+transform:
+  theta: unconstrained
+  x: identity                             # context preprocessing before z-scoring (identity | log)
+  x_overrides: {}                         # per task, e.g. {lotka_volterra: log}
+
+# simulation budgets: the official sbibm budgets and the paper's "unlimited" track.
+# steps = optimizer steps of the flow (same for every arm); batch_size = flow batch
+# (= the coupling batch); coupler_* = the KR coupler pretrain on the SAME rows.
+budgets:
+  "1e3":     {n_train: 1000,     batch_size: 100,  steps: 20000, coupler_steps: 3000,  coupler_batch: 100,  val_frac: 0.1}
+  "1e4":     {n_train: 10000,    batch_size: 512,  steps: 40000, coupler_steps: 6000,  coupler_batch: 1024, val_frac: 0.1}
+  "1e5":     {n_train: 100000,   batch_size: 1024, steps: 60000, coupler_steps: 15000, coupler_batch: 8192, val_frac: 0.1}
+  unlimited: {n_train: 10000000, batch_size: 1024, steps: 60000, coupler_steps: 15000, coupler_batch: 8192, val_frac: 0.001}   # 10 k val rows: the best tier exists here too
+n_data_seeds: 3                           # dataset / coupler replicas; flow seed k uses data seed k % 3
+holdout_n: 200000                         # fresh draws per (task, data seed) for the held-out audit
+
+model:                                    # the FMResUNet of every past study (S11 / S12 settings)
+  name: FMResUNet
+  use_unet: true
+  n_skip_connections: 3
+  max_hidden_dim: 256
+  film_cond_dim: 128
+  time_embed_dim: 64
+  use_film_conditioning: true
+  activation: SiLU
+  norm: layer_norm
+  # uniform t throughout. The pilot's `schedule: cosine` with empty final_params annealed t
+  # from U(0,1) to Beta(1, 0.3) over the run (a hidden t -> 1 curriculum; lane Log 2026-10-15).
+  time_config: {schedule: none, init_dist: uniform}
+
+training:
+  lr: 1.0e-3
+  weight_decay: 1.0e-6
+  warmup_frac: 0.05                       # linear warm-up, then cosine decay to 1 % of lr
+  grad_clip: 1.0
+  ema_decay: 0.999                        # EMA of the flow weights (a shadow copy, never trains; decay warm-up (1+s)/(10+s)):
+                                          # the tiers best_ema / last_ema (eval.tiers). Lane Log 2026-10-16: the best tier of the
+                                          # raw weights is an un-annealed state under the cosine decay; the EMA tiers test that confound
+  log_every: 500
+  checkpoint_every_s: 600                 # checkpoint_last.pt cadence (multistage contract, docs/multistage_training.md)
+  preemption_margin_s: 900                # stop + checkpoint when less than this + one cycle is left on the wall
+  eval_reserve_s: 5400                    # a non-final stage hands the evaluation to the next stage below this much wall
+  val_split: true                         # official budgets: budgets.<b>.val_frac rows held out (the coupler's split), flow trains on the rest
+  # diagnostic history during training (NOT a selection: every arm trains its fixed step budget,
+  # as S11 / S12 / the real-MC study did; the history gives the post hoc early-stop-aware read,
+  # like rw2's KL_min): validation FM loss on the held-out val_frac rows at fixed t draws +
+  # a cheap reference probe (sliced W1 / MMD^2 on diag_n_obs observations, diag_n_samples draws)
+  diag_every: 2000
+  diag_n_obs: 3
+  diag_n_samples: 2000
+  diag_solver: {tag: euler_16, method: euler, steps: 16}
+
+coupler:                                  # KRQuantileOT stack, production CRPS recipe (W7g)
+  K: 64
+  hidden_dims: [128, 128, 128]
+  tail_bound: 4.0
+  pit_method: analytic
+  kr_sort_impl: vectorized                # S12 lesson: the loop sort erases the cost edge at D >= 3
+  crps_level_batch: true                  # batched quantile levels in the CRPS step (same loss, far fewer launches)
+  lr: 3.0e-4
+  weight_decay: 1.0e-6
+  crps: {n_quantiles: 64, u_min: 0.002, u_max: 0.998, tail_weight: 0.25}
+  ema_decay: 0.999
+  tail_avg_frac: 0.1
+  default_recipe: locscale_id_e4_c256     # 2026-10-16 (user decision): the audit-selected recipe of the cplvar wave (lane S4, S5)
+                                          # replaces the pilot's locscale_id (12-epoch budget, [128]x3) as the production recipe
+  recipes:                                # study B: three recipes per task; the rest = the coupler-variant wave (cplvar)
+    # a recipe may also set K, hidden_dims (context net), lr and steps_mult (x the budget's coupler_steps)
+    box:         {parameterization: box, pit_tail: extend, tie_shuffle: true, coverage_weight: 1.0}
+    locscale:    {parameterization: location_scale, init_identity: false}
+    locscale_id: {parameterization: location_scale, init_identity: true}
+    # coupler-variant wave 2026-10-15: the recipe-of-record levers (qot_calibration_audit.md A9: budget knee ~1e5
+    # steps, context net [256]x3) applied to the pilot's locscale_id, which sat at the 12-epoch budget (15.9 k steps
+    # per stage) with a [128]x3 context net
+    locscale_id_e4:      {parameterization: location_scale, init_identity: true, steps_mult: 4.0}
+    locscale_id_c256:    {parameterization: location_scale, init_identity: true, hidden_dims: [256, 256, 256]}
+    locscale_id_e4_c256: {parameterization: location_scale, init_identity: true, steps_mult: 4.0, hidden_dims: [256, 256, 256]}
+
+arms:                                     # optimal_transport block of the FM (OTPlanSampler kwargs)
+  # num_threads: 1 — POT's OpenMP network simplex (numThreads > 1) is 10-20x SLOWER than the
+  # serial solve on the apu nodes / this container (probe 2026-10-15, jobs 12221806-7: the same
+  # 1024x1024 cost matrix solves in 52-115 ms at 1 thread and 560-2160 ms at 8); the S11 / S12
+  # toy walls (40-110 ms) are the serial-speed numbers. Lane Log 2026-10-15.
+  none: {}                                # independent coupling = FMPE
+  mbot:        {method: exact, sigma: 0.0, ot_fraction: 1.0, num_threads: 1}
+  c2ot:        {method: exact, sigma: 0.0, ot_fraction: 1.0, num_threads: 1, adaptive_context_weight: true, target_r: 0.01, context_cost: l2}
+  cotfm_l30:   {method: exact, sigma: 0.0, ot_fraction: 1.0, num_threads: 1, context_cost_weight: 30.0,   context_cost: l2}
+  cotfm_l100:  {method: exact, sigma: 0.0, ot_fraction: 1.0, num_threads: 1, context_cost_weight: 100.0,  context_cost: l2}
+  cotfm_l400:  {method: exact, sigma: 0.0, ot_fraction: 1.0, num_threads: 1, context_cost_weight: 400.0,  context_cost: l2}
+  cotfm_l1000: {method: exact, sigma: 0.0, ot_fraction: 1.0, num_threads: 1, context_cost_weight: 1000.0, context_cost: l2}
+  kr_qot:      {method: kr_quantile}      # the pretrained KR stack (coupler stage), nested-sort coupling
+  coupler_sampler: {method: kr_quantile, sampler_only: true}   # the coupler alone as a sampler (NQE-like), no flow
+
+audit:                                    # held-out audit of a coupler (study B / G statistics)
+  n_samples: 200000
+  batch_size: 1024
+  n_bins: 24
+  n_dir: 32
+  harm_threshold: 0.05                    # worst-axis sliced-W1 imprint in base-sigma units
+  seed: 20261014
+
+eval:
+  n_posterior_samples: 10000              # = sbibm's num_posterior_samples
+  solvers:
+    - {tag: euler_2,    method: euler,    steps: 2}
+    - {tag: euler_4,    method: euler,    steps: 4}
+    - {tag: euler_8,    method: euler,    steps: 8}
+    - {tag: euler_16,   method: euler,    steps: 16}
+    - {tag: euler_32,   method: euler,    steps: 32}
+    - {tag: euler_64,   method: euler,    steps: 64}
+    - {tag: euler_128,  method: euler,    steps: 128}
+    - {tag: midpoint_2, method: midpoint, steps: 2}     # NFE 4
+    - {tag: midpoint_4, method: midpoint, steps: 4}     # NFE 8
+    - {tag: midpoint_8, method: midpoint, steps: 8}     # NFE 16
+    - {tag: midpoint_16, method: midpoint, steps: 16}   # NFE 32
+    - {tag: dopri5_1e-5, method: dopri5,  tol: 1.0e-5}  # converged; NFE counted
+  converged_tag: dopri5_1e-5
+  matched_quality_tol: 0.01               # C2ST within 0.01 of the arm's own converged value
+  # checkpoint tier whose evaluation is the headline per budget. Decided 2026-10-16 by the pre-registered rule of the
+  # tiers wave (registered yaml, pilot_freezes 2026-10-16): the headline is the LAST state everywhere — on two moons 1e3
+  # the EMA weights at the validation-loss argmin (best_ema) are as far from the reference as the raw best tier (both
+  # worse than last by 0.03-0.10), so no checkpoint selected by the validation FM loss is uniformly better; the
+  # reported second tier is best_ema (it dominates best: slcp 1e5 independent 0.75 vs 0.80 vs 0.90 last). Lane Log 2026-10-16 d
+  headline_tier: {"1e3": last, "1e4": last, "1e5": last, unlimited: last}
+  # checkpoint tiers evaluated per run (result.json eval / eval_best / eval_best_ema / eval_last_ema; each tier is a full
+  # evaluation, ~15-25 min at 10 obs x 10 000 samples): last = the fixed step budget, best = raw weights at the validation-loss
+  # argmin, best_ema = EMA weights at the EMA validation-loss argmin, last_ema = EMA weights at the end. A wave `overrides:
+  # {tiers: "..."}` (or `train --tiers`) replaces the list for that wave (the tiers wave evaluates all four)
+  tiers: [last, best_ema]                 # the full wave: headline (last) + the reported EMA-at-validation-argmin tier
+  c2st: {seed: 1, n_folds: 5, n_jobs: 8}
+  rejection_max_rounds: 50                # identity transform only
+  save_samples_for: [dopri5_1e-5, euler_2, euler_8]
+  extra:                                  # the extended battery per (observation, solver): kanneleon.evaluation.sbibm_metrics
+    n_dir: 256                            # sliced W1 / W2 directions (fixed by dir_seed and D)
+    dir_seed: 20261015
+    quantiles: [0.01, 0.05, 0.5, 0.95, 0.99]
+    energy: true
+    split_half_floor: true                # the battery between two halves of the reference (floor, n/2 vs n/2)
+    nll: {method: dopri5, tol: 1.0e-5, n_ref: 10000}   # -log p_flow(theta_ref | x_o) in raw theta space; null = skip
+
+# waves for shell_scripts/submit_sbibm_study.py (--wave <name>); seeds are flow seeds,
+# recipes/orders expand the kr_qot and coupler_sampler arms
+waves:
+  smoke:                                  # apudev, minutes: every stage once
+    tasks: [two_moons]
+    budgets: ["1e3"]
+    arms: [none, kr_qot, coupler_sampler, c2ot]
+    seeds: [0]
+    recipes: [locscale_id]
+    overrides: {steps: 300, coupler_steps: 300, n_obs: 2, n_posterior_samples: 2000, holdout_n: 20000, audit_n_samples: 20000}
+    walltime: {simulate: "00:10:00", pretrain: "00:12:00", audit: "00:10:00", train: "00:14:00"}
+    partition: apudev
+  pilot:                                  # two moons + slcp, three budgets, 3 seeds, both transforms
+    tasks: [two_moons, slcp]
+    budgets: ["1e3", "1e5", unlimited]
+    arms: [none, kr_qot, coupler_sampler, c2ot, cotfm_l100, cotfm_l1000]
+    seeds: [0, 1, 2]
+    recipes: [locscale_id]
+    transforms: [unconstrained, identity]
+    control_arms: [none, kr_qot]           # the identity-transform control runs on these arms only
+    walltime: {simulate: "00:40:00", pretrain: "06:00:00", audit: "00:30:00", train: "04:00:00", train_emd: "14:00:00", resample: "00:40:00"}
+    # chained --resume auto stages per (arm, budget), default 1: at num_threads 1 an unlimited EMD cell is
+    # ~2-3 h (60 k x <= 115 ms + evaluation), so the chains are insurance against stragglers, not the plan
+    train_stages: {c2ot: {"1e5": 2, unlimited: 2}, cotfm_l100: {unlimited: 2}, cotfm_l1000: {unlimited: 2}}
+  full:
+    tasks: [two_moons, gaussian_mixture, sir, lotka_volterra, slcp]
+    budgets: ["1e3", "1e4", "1e5", unlimited]
+    arms: [none, mbot, c2ot, cotfm_l30, cotfm_l100, cotfm_l400, cotfm_l1000, kr_qot, coupler_sampler]
+    seeds: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+    recipes: [locscale_id_e4_c256]        # the production recipe (coupler.default_recipe); pretrain x4: 6 h (D=2) to ~15 h (D=5)
+    walltime: {simulate: "02:00:00", pretrain: "20:00:00", audit: "00:30:00", train: "05:00:00", train_emd: "18:00:00", resample: "00:40:00"}
+    train_stages: {c2ot: {"1e5": 2, unlimited: 2}, cotfm_l30: {"1e5": 2, unlimited: 2}, cotfm_l100: {unlimited: 2},
+                   cotfm_l400: {unlimited: 2}, cotfm_l1000: {unlimited: 2}, mbot: {"1e5": 2, unlimited: 2}}
+  studyB:                                 # three recipes x two tasks, unlimited track (public pre-registration)
+    tasks: [slcp, lotka_volterra]
+    budgets: [unlimited]
+    arms: [kr_qot]
+    seeds: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+    # 2026-10-16: the production recipe joins the three registered ones (its slcp / lotka_volterra couplers and flows are
+    # the full wave's kr_qot cells; the submitter skips what exists). Study B's audits are stamped before any of its flows
+    recipes: [box, locscale, locscale_id, locscale_id_e4_c256]
+    walltime: {simulate: "02:00:00", pretrain: "20:00:00", audit: "00:30:00", train: "04:00:00"}
+  cplvar:                                 # coupler variants at unlimited: does a better-fitted coupler close the converged gap?
+    tasks: [two_moons, slcp]
+    budgets: [unlimited]
+    arms: [kr_qot, coupler_sampler]
+    seeds: [0, 3, 6]                      # all three flow seeds use data seed 0 (one coupler per variant)
+    recipes: [locscale_id_e4, locscale_id_c256, locscale_id_e4_c256, box, locscale]
+    transforms: [unconstrained, identity]
+    control_arms: [kr_qot, coupler_sampler]
+    walltime: {simulate: "02:00:00", pretrain: "20:00:00", audit: "00:30:00", train: "04:00:00", resample: "00:40:00"}
+  tiers:                                  # 2026-10-16: the checkpoint-tier test — do the EMA tiers remove the two-moons loss of
+    tasks: [two_moons, slcp]              # the best tier (lane S6)? Submit as --tasks two_moons --budgets 1e3 1e5 and --tasks slcp --budgets 1e5
+    budgets: ["1e3", "1e5"]
+    arms: [none, kr_qot]
+    seeds: [0, 1, 2]
+    recipes: [locscale_id]                # the pilot's couplers (the recipe does not enter the tier question)
+    overrides: {tiers: "last,best,best_ema,last_ema"}   # NOT a smoke override: result.json counts; four evaluations per run
+    walltime: {simulate: "00:40:00", pretrain: "06:00:00", audit: "00:30:00", train: "04:00:00", resample: "00:40:00"}
+  orders:                                 # P-A6: two coordinate orders on slcp and lotka_volterra
+    tasks: [slcp, lotka_volterra]
+    budgets: [unlimited]
+    arms: [kr_qot]
+    seeds: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+    recipes: [locscale_id_e4_c256]        # P-A6 is about the production arm
+    orders: {slcp: ["4,3,2,1,0"], lotka_volterra: ["3,2,1,0"]}
+    walltime: {simulate: "02:00:00", pretrain: "20:00:00", audit: "00:30:00", train: "04:00:00"}

@@ -1,0 +1,11 @@
+{
+ "what": "A",
+ "registered_yaml": "/viper/u2/lfall/flows_for_mc_example/docs/sbibm_benchmark_registered.yaml",
+ "registered_sha256": "4d5472d5628c4c319d7148456c584d999c33d37985f5a17ac4a46f2f35b3992e",
+ "config": "/viper/u2/lfall/flows_for_mc_example/configs/sbibm/study_v1.yaml",
+ "config_sha256": "f0a7dd6ef79a57eae81d220b27107c8bde567ab340b9785647ee6675990d5708",
+ "git_head": "a8b23d672219261452c17cfbd501c4a17b573fbd",
+ "git_dirty": true,
+ "stamp_job_id": "12243703",
+ "created": "2026-10-16T13:17:46.468969+00:00"
+}
