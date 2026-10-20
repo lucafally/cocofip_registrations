@@ -1,0 +1,228 @@
+# Predictions of the CDF-route response lane (docs/response_cdf_route.md).
+# Graded predictions are recorded in the lane's Log; none is open.
+lane: response_cdf_route.md
+metric: fold low-edge / bulk median |flow/truth - 1| ([21, 23.5) keV and [23.5, 38.6] keV, the S14 bundle windows)
+predictions:
+  - id: Q1
+    registered: 2026-09-28
+    status: graded 2026-09-29 — falsified
+    claim: >
+      Re-folding one production real-MC checkpoint
+      (scripts/results/20260917_174429_rscale_ctxC_w512_d2e9_s0_lr4p0536em05_rw4, raw final weights)
+      with the CDF route (float64 bin masses, fixed-grid RK4 with N_s from the doubling test) on a
+      composite Gauss-Legendre E_start grid (16 x 32 on [qU, E0], panel boundaries at qU and E0)
+      against running_histogram_1e11.h5 lowers the low-edge median |rel| by >= 2x relative to the
+      lane's midpoint-2400 / sub-grid-7 headline fold of the same checkpoint (fold_quality F9/F10
+      level 1.6-2.3e-3), while the bulk median moves by < 10 %.
+    bands:
+      low_edge_ratio_cdf_gl_over_midpoint: "<= 0.5"
+      bulk_ratio_cdf_gl_over_midpoint: "[0.9, 1.1]"
+    falsified_if: >
+      the low-edge median moves by < 20 % (ratio in [0.8, 1.2]): the real-MC low-edge residual is
+      then a model property as the fold_quality lane states, not the qU-step aliasing seen on the toy
+      (response_cdf_route R6/R7/R14).
+    basis: >
+      response_cdf_route R6, R7, R14 (toy: the whole midpoint error is the qU step, GL removes it)
+    where: a real-MC loader for scripts/audit_cdf_response.py (mirror scripts/profile_fold.py::load_run), one apu job
+    outcome: >
+      job 12023591 + scripts/audit_cdf_response_realmc_grade.py, pipeline window metric
+      (window_residual_metrics, renormalize=True), stored fold (n_estart 4800, sub-grid 7, dopri5 1e-7)
+      vs CDF + GL 16 x 32: low-edge median 1.245e-3 -> 1.131e-3 (ratio 0.908, inside the falsification
+      band [0.8, 1.2]); bulk 4.350e-4 -> 4.360e-4 (ratio 1.002, inside [0.9, 1.1]). The quadrature error of
+      the stored fold sits in the threshold bin at 21.04 keV alone (+2.83e-3, 96 sigma of the truth
+      histogram); chi2/dof of the edge window 4562 -> 1756, of the ROI 864 -> 392. Over 254 stored folds
+      at n_estart 4800 the re-weighted / stored edge median is 0.90 [0.63, 1.46] (job 12023793).
+      Baseline: the stored fold of the checkpoint is at n_estart 4800, not the 2400 named in the claim;
+      against the CDF fold on the midpoint-2400 grid (edge 1.273e-3) the low-edge ratio is 0.89. On the
+      ROI-normalized variant of the metric the ratios are 1.137 (low edge) and 0.860 (bulk, outside its
+      band). Falsified on every reading. Lane claims R33, R34, R37.
+    evidence: scripts/results/cdf_response_audit_v1/realmc/rw4_ctxC_w512_d2e9_s0.json (Q1_grade_pipeline_metric), realmc/reweight_scan.json
+  - id: Q2
+    registered: 2026-09-30
+    status: graded 2026-09-30 — falsified (criteria a and c)
+    claim: >
+      Acceptance of `inference.fold_accurate.response: cdf` as the default fold route, with the
+      library implementation (InferenceInterface.create_response(mode="cdf"),
+      FM / DNF.conditional_cdf, utils.quadrature.integration_rule), on six real-MC FM checkpoints
+      of the scaling lane (both arms, widths 128-1024, D 1e8-3e9, raw final tier) and one real-MC
+      Bernstein DNF trained for the purpose. Every criterion holds on every checkpoint:
+      (a) inside the ROI the two routes agree on the same nodes and weights (the stored density
+      response vs the CDF response, uniform grid with cut cells): each window median of the
+      pipeline metric (edge, bulk, endpoint, ROI) differs by < 1 % and no ROI bin by more than
+      0.3 Poisson band units at 1e9;
+      (b) no bin mass is negative;
+      (c) the mass of the lowest E_dep bin, ROI-normalized, is within 5 % of the truth histogram's
+      (density route: -18 %), and the in-ROI fraction of the fold within 1e-3 of the truth's;
+      (d) the proposed default numerics are converged: Gauss-Legendre 512 -> 1024 nodes and, for
+      FM, RK4 256 -> 512 steps each move no ROI bin by more than 0.1 band units at 1e9;
+      (e) the CDF fold on Gauss-Legendre 512 costs at most 1/10 of the stored density fold's
+      response wall time (FM checkpoints).
+    falsified_if: >
+      any criterion fails on any checkpoint. Then the default stays `density` (with cut cells) and
+      the failing checkpoint is recorded in the lane.
+    basis: response_cdf_route R31-R35 (one checkpoint, audit-script implementation)
+    where: scripts/validate_cdf_fold.py, one apu job; scripts/results/cdf_response_audit_v1/validation/
+    outcome: >
+      jobs 12039428 (six FM checkpoints) and 12039999 (DNF, EMA tier). (b) no negative mass on 7 of 7.
+      (c) lowest bin: density -17.8 to -22.5 %, CDF -1.2 to +0.3 %; in-ROI fraction minus truth: CDF
+      -0.3 to -4.9e-4 on the FM checkpoints, -2.9e-3 on the one-epoch DNF (its own model error): FAILS
+      on the DNF. (d) node doubling 0.010-0.064, step doubling 0.0003-0.015 band units: holds. (e) 5-24 s
+      against 574-999 s: holds. (a) 0.018 / 0.076 / 0.077 / 0.142 / 0.296 / 0.373 band units at 1e9 and
+      window-median differences of 0.06-4.4 %: FAILS on ctxC w512 d2e9 (endpoint 1.2 %), base w512 d2e9
+      (edge 4.4 %), base w256 d3e9 (0.373 band units) and the DNF (endpoint 4.5 %). By the rule above
+      the default stays `density`. Post hoc (not part of the grade): the gap of (a) closes when the
+      density route's sub-grid goes from 7 to 11 or more and does not move with the solver tolerance
+      (jobs 12039748, 12039988; registered for the other four checkpoints as Q3). Lane claims R39-R41.
+    evidence: scripts/results/cdf_response_audit_v1/validation/{validation_fm,validation_dnf,validation_fm_density_tols,validation_fm_density_ladder}.json
+  - id: Q3
+    registered: 2026-09-30
+    status: graded 2026-09-30 — passed
+    claim: >
+      The gap between the two routes on the same nodes is the Simpson sub-grid of the density route,
+      not the CDF route: on the four checkpoints of Q2 not yet probed (ctxC w512 d2e9 s0, ctxC w1024
+      d1e9 s0, base w1024 d1e9 s1, ctxC w128 d3e9 s0), on every 8th production node, the density
+      response at sub-grid 21 (dopri5 1e-7) agrees with the CDF response to <= 0.05 Poisson band units
+      at 1e9 in every ROI bin, and is no further from it than the sub-grid-7 response.
+    falsified_if: >
+      on any of the four the sub-grid-21 gap exceeds 0.05 band units or exceeds the sub-grid-7 gap.
+    basis: >
+      two checkpoints measured before registration (job 12039988): base w512 d2e9 0.234 -> 0.022,
+      base w256 d3e9 0.096 -> 0.024 band units from sub-grid 7 to 21.
+    where: scripts/validate_cdf_fold.py --density-ladder 7@1e-7,21@1e-7, one apu job
+    outcome: >
+      job 12040245. Max ROI gap to the CDF response, sub-grid 7 -> 21 (band units at 1e9): ctxC w512
+      d2e9 0.108 -> 0.026; ctxC w1024 d1e9 0.088 -> 0.020; base w1024 d1e9 0.070 -> 0.022; ctxC w128
+      d3e9 0.071 -> 0.024. All <= 0.05 and below the sub-grid-7 gap. Lane claim R41.
+    evidence: scripts/results/cdf_response_audit_v1/validation/validation_fm_density_ladder_q3.json
+  - id: Q4
+    registered: "2026-09-30 (16:45, before any corrected fold existed: jobs 12043400-12043405 ran without --with-recalibration and produced raw folds only; resubmitted as 12043481-12043486)"
+    status: graded 2026-09-30 — falsified (all three methods, by the registered bands)
+    claim: >
+      After the review fixes (MonotoneCDFCorrection.conditional_cdf renormalized over the fit
+      support; create_response(mode="cdf") evaluating edges beyond the kinematic support at its
+      end instead of setting F = 1), a recalibration wrapper gives the same corrected fold through
+      both routes. On the real-MC checkpoint rw4 ctxC w512 d2e9 s0 (raw final tier), for each of
+      recalibration.method monotone_cdf, latent_mle and moments, the corrected fold
+      (metrics fold_corrected / corr_fold_arrays.npz) with response: cdf (RK4 256) and with
+      response: density (sub-grid 11, dopri5 1e-7), both on the same 512 Gauss-Legendre nodes
+      (32 per panel), ROI-normalized, differ in no ROI bin by more than 0.3 Poisson band units at
+      1e9 (the bar of Q2), and for latent_mle and moments by no more than 0.1.
+    falsified_if: >
+      the gap exceeds 0.3 band units for any method, or 0.1 for latent_mle or moments.
+    basis: >
+      R41 (raw model: sub-grid >= 11 brings the density route within 0.02-0.03 band units of the CDF
+      route); unit tests of the three wrappers (CDF = integral of the density, 2e-5 absolute). The
+      monotone wrapper interpolates M and M' separately on 257 u-points, which by itself can cost
+      1e-5 to 1e-4 per bin — hence the wider band for it.
+    not_predicted: >
+      the size of the pre-fix error: the same cdf runs with the unfixed code (jobs 12043408
+      monotone_cdf, 12043409 moments; resubmitted as 12043487, 12043488) are measured and reported, no band.
+    where: scripts/data_pipeline.py --eval-model from the isolated code copy /ptmp/lfall/cdf_route_wt (fixed) and /ptmp/lfall/cdf_route_base (unfixed); configs cdfrecal_<method>_<route>.yaml
+    outcome: >
+      jobs 12043481-12043486 (fixed code; 12043773 repeats moments cdf on the landed code), 12043487,
+      12043488 (unfixed code). Corrected fold, CDF vs density (sub-grid 11), max over ROI bins in band
+      units at 1e9: monotone_cdf 1.87 (band 0.3: FAILS; median 0.17; window medians apart by 2.6 % bulk,
+      4.4 % edge, 15 % endpoint), latent_mle 0.119 and moments 0.115 (band 0.1: FAIL). The raw folds of
+      the same runs are 0.118 apart: the basis (R41, "within 0.02-0.03 from sub-grid 11 on") holds on
+      the uniform production nodes and not on the 512 Gauss-Legendre nodes of this check (0.116 at
+      sub-grid 11, 0.028 at 21, 0.017 at 41; jobs 12043858, 12043859). Post hoc (not part of the grade):
+      with the raw routes' gap divided out bin by bin the wrappers' own gap is 0.025 (latent_mle), 0.021
+      (moments), 1.88 (monotone_cdf). Unfixed vs fixed code, corrected CDF fold: identical to float32
+      resolution for moments and for monotone_cdf (fit support [0, cut] at all 35 anchors; no model mass
+      above the kinematic edge). Lane claims R42, R44, R46.
+    evidence: scripts/results/cdf_response_audit_v1/review_fixes/{grade_unfixed.json, grades.json (q4), grade_extra.json, grade_q6_double_ratio.json, runs.tar.gz}
+  - id: Q5
+    registered: "2026-09-30 (16:45, before the training job was submitted: 12043430; check 12043892 chained to it)"
+    status: graded 2026-10-01 — passed
+    claim: >
+      A real-MC Bernstein DNF at the production recipe of the DNF scaling lane (M32, 12 steps,
+      hidden 64, 1e7 rows x 100 epochs = 879k steps, EMA tier; config cdfcheck_dnf_bern_m32_n1e7
+      with epochs 100) passes the route checks of Q2 that do not depend on the model's quality:
+      (a) on the stored nodes (uniform 2400, cells cut at qU) the CDF response and the density
+      response at sub-grid 11 or more differ in no ROI bin by more than 0.1 Poisson band units at
+      the run's n_stat_hi (1e8), ROI-normalized; (b) no bin mass is negative; (d) Gauss-Legendre
+      512 -> 1024 nodes moves no ROI bin by more than 0.1 band units; and the density route at any
+      sub-grid loses more than 10 % of the lowest E_dep bin relative to the CDF route (R35 on a DNF).
+    falsified_if: >
+      any of the four fails. A failure of (a) at sub-grid >= 11 is a checkpoint where a finer
+      sub-grid does not bring the density route to the CDF route — the lane's "would change the
+      picture" case.
+    recorded_not_graded: >
+      the stored sub-grid-7 gap; lowest bin and in-ROI fraction against the truth (model quality);
+      fold window medians against the one-epoch model (edge 9.4e-3, bulk 1.8e-3).
+    basis: one-epoch model of Q2 (route gap 0.024 band units at 1e8 at sub-grid 7, no negative mass, node doubling 0.000); R1, R23
+    where: scripts/data_pipeline.py (training + pipeline) then scripts/validate_cdf_fold.py --tier ema --density-ladder, isolated code copy
+    outcome: >
+      jobs 12043430 (training + pipeline, 8.2 h, 100 epochs completed; heldout NLL 1.1201) and
+      12043892 (check, landed code, EMA tier), band at the run's n_stat_hi 1e8. (a) CDF vs density,
+      sub-grid 11 / 21 / 41: 0.043 / 0.049 / 0.048 band units (bar 0.1): holds — measured on every
+      8th stored node (300 of 2400), which is what the script's ladder does, not on all stored nodes
+      as the claim was worded; on all stored nodes at the stored sub-grid 7 the gap is 0.031.
+      (b) min bin mass 0.0: holds. (d) Gauss-Legendre 512 -> 1024: 0.0006 (bar 0.1): holds. Lowest
+      E_dep bin, density vs CDF: -21.6 % at the stored sub-grid 7 (-9.7 / -3.2 / -1.7 % at 11 / 21 /
+      41): holds as registered for the stored sub-grid. Recorded, not graded: lowest bin vs truth
+      -21.6 % (density) / -0.03 % (CDF); in-ROI fraction minus truth +5.2e-3 / -6.9e-4; window
+      medians edge 2.62e-3, bulk 5.54e-4, endpoint 5.82e-4, ROI 6.16e-4 (one epoch: 9.39e-3, 1.83e-3,
+      1.07e-4, 3.51e-3); the Q2-style 1 % bar on window medians would fail (bulk 3.4 %, 1.9e-5
+      absolute, at sub-grid 7). Lane claim R47.
+    evidence: scripts/results/cdf_response_audit_v1/validation/validation_dnf_e100.json; review_fixes/dnf_e100_metrics.json
+  - id: Q6
+    registered: 2026-09-30 (17:02, after Q4 was seen to fail on monotone_cdf and before the runs below)
+    status: graded 2026-09-30 — undecided (between the confirmation and the falsification band)
+    claim: >
+      The 1.87 band-unit gap between the two routes under recalibration.method monotone_cdf (Q4) is
+      the density route's own numerics: MonotoneCDFCorrection.estimate_density reads u = F_raw from a
+      513-point trapezoid table of the raw density over [e_lo, e_hi] (n_grid_cdf; 0.04-0.08 keV
+      spacing against a peak of sigma 0.13 keV), linearly interpolated, where the CDF route takes
+      F_raw from the flow. On the same checkpoint and 128 Gauss-Legendre nodes (4 x 32), the gap of
+      the corrected density fold (sub-grid 11) to the corrected CDF fold falls by at least 4x when
+      n_grid_cdf goes from 513 to 4097.
+    falsified_if: >
+      it falls by less than 2x: the gap is then not the table, and the wrapper's two surfaces
+      disagree for another reason (the next suspects: M and M' interpolated separately on 257
+      u-points; a defect in conditional_cdf that the unit test does not reach).
+    basis: >
+      linear interpolation of F across the peak is off by h^2/8 p' ~ 7e-3 at 513 points; with M'
+      varying by 8 % over u (mder_swing 1.08) that is 1e-4 to 1e-3 per bin, the size of the gap
+      (1.87 band units at 1e9 = 4e-4 in a bulk bin). Unit test with an analytic flow: CDF = integral
+      of the density to 2e-5 at n_grid_cdf 2049.
+    where: data_pipeline.py --eval-model --with-recalibration, configs cdfrecal128_monotone_{cdf,density513,density4097}.yaml, isolated code copy
+    outcome: >
+      jobs 12043804 (cdf), 12043805 (n_grid_cdf 513), 12043806 (4097). Corrected density fold vs
+      corrected CDF fold on the 128 Gauss-Legendre nodes, max over ROI bins at 1e9: 2.02 -> 0.79 band
+      units (x2.6): more than the 2x below which the claim falls, less than the 4x it predicts. The
+      registration overlooked that the raw routes are themselves 0.82 apart on these 128 nodes
+      (sub-grid 11), so 0.79 is at the floor of the comparison. Post hoc, with the raw gap divided out
+      bin by bin: 2.12 -> 0.58 (x3.7). The table is the larger part of the monotone_cdf gap; 0.58 band
+      units remain unexplained. Lane claim R45.
+    evidence: scripts/results/cdf_response_audit_v1/review_fixes/{grade_extra.json (q6_*), grade_q6_double_ratio.json, runs.tar.gz}
+  - id: Q7
+    registered: "2026-09-30 (17:35, before the run)"
+    status: graded 2026-09-30 — falsified in part (i); part (ii) holds
+    claim: >
+      What is left of the monotone_cdf gap after Q6 is still the wrapper's CDF table, not M and M'
+      being interpolated separately. On 16 Gauss-Legendre E_start nodes of the same checkpoint, with
+      the saved correction of job 12043481, density-surface bin masses (Simpson 41 per bin) against
+      CDF-surface masses: (i) with the table taken from the flow's own CDF (4097 points, no trapezoid
+      of the density) the two surfaces agree as well as the raw model's two surfaces do — the
+      16-node fold gap (max ROI band units at 1e9) and the median per-bin relative difference are
+      both within 2x of the raw figures; (ii) with the trapezoid table the fold gap falls from 513 to
+      4097 to 32769 points and is still above 2x the raw figure at 4097.
+    falsified_if: >
+      with the flow-CDF table the fold gap or the median per-bin difference exceeds 3x the raw figure:
+      the residual is then in the map (M, M' on 257 u-points) and not in the table.
+    basis: >
+      Q6 (the gap falls with the table but not as h^2); R46 (the trapezoid of the density cannot
+      integrate the mass piled up at E_dep -> 0, which shifts u everywhere above it); unit test with
+      an analytic flow (2e-5 at 2049 points, no spike).
+    where: scripts/audit_cdf_response_monotone.py, one apu job; scripts/results/cdf_response_audit_v1/review_fixes/monotone_surfaces.json
+    outcome: >
+      job 12044072 (7 min). Median per-bin relative difference / 16-node fold gap (max ROI band units
+      at 1e9), density surface vs CDF surface: raw model 3.3e-6 / 0.042; trapezoid table 513 points
+      7.7e-4 / 2.98; 4097 points 5.7e-5 / 0.25; 32769 points 3.1e-5 / 0.117; flow-CDF table (4097)
+      3.0e-5 / 0.118. (i) With the exact table the per-bin median is 9x the raw figure (bound 3x:
+      FAILS) and the fold gap 2.8x (inside 3x, outside the 2x of the claim): a residual of 3e-5 per
+      bin, 0.12 band units, is in the map (M and M' interpolated separately on 257 u-points).
+      (ii) holds: the trapezoid table converges onto the exact one (2.98 -> 0.25 -> 0.117) and is at
+      6x the raw fold gap at 4097. Lane claim R45.
+    evidence: scripts/results/cdf_response_audit_v1/review_fixes/monotone_surfaces.json

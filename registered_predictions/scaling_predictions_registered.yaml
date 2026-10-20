@@ -1,0 +1,91 @@
+# Registered predictions for the toy scaling-law study — FROZEN BEFORE W2.
+# The git timestamp of this file is the registration; fits must be reported
+# against these (pass / fail / surprise), never silently reinterpreted.
+# Sources: docs/paper_scaling_law_estimation.md §3.5, docs/scaling_study_program.md §3,
+# wave evidence in docs/smooth_conditioning_plan.md + fold_quality_investigation.md.
+
+registered_at: "2026-07-17"
+functional_form: "L(N, D) = E + A/N^alpha + B/D^beta (Chinchilla form; M4 cross-check)"
+fit_protocol: "summed Huber (delta 1e-3) on log residuals, L-BFGS-B multistart,
+  E fixed-to-floor primary + E-free consistency refit, >=2000 bootstrap resamples,
+  censor < 2x floor from exponents (never from E), largest-compute holdout
+  extrapolation error reported. Implemented in scripts/fit_scaling_laws.py."
+
+t0_gauss_linear:
+  kl_w1_upstream:
+    claim: "nll.kl_paired and grid.w1_mean follow clean power laws; E consistent
+      with 0 (analytic floor); alpha large (Sharma-Kaplan alpha ~ 4/d with d=1
+      target => fast N-scaling, early saturation is EXPECTED and not a pathology);
+      beta in [0.5, 1.0] (minimax smooth-CDE anchor)."
+    kill: "E-free refit incompatible with the analytic 0 floor => fitting
+      machinery or eval floor broken; STOP before ctxC."
+  fold_base_arm:
+    claim: "fold.norm_window.median_abs_rel_window saturates into E_fold
+      significantly above the measured truth/quadrature floor; pre-saturation
+      exponents shared with KL/W1 within CIs."
+  fold_ctxC_arm:
+    claim: "E_fold(ctxC) / E_fold(base) ~ 0.66 (the wave-7 factor); alpha, beta
+      unchanged within 68% CIs; E_KL/E_W1 unchanged ~ floor."
+  pointwise_trade:
+    claim: "ctxC pointwise metrics slightly worse at fixed (N, D) — the A
+      coefficient (and/or peak.l2 level) degrades 1.2-1.5x, consistent with
+      wave 7. The trade is a FEATURE to plot (F3), not to hide."
+  capacity_null:
+    claim: "at D = 1e9, dfold/dN ~ 0 within seed scatter for the base arm
+      (re-derives the wave-6 null inside the grid)."
+  isoflop:
+    claim: "flat parabolas / weakly identified N_opt(C) (cheap 1D data,
+      2605.28940 caveat); report a = beta/(alpha+beta), hedge, expect
+      data-hungrier than Chinchilla a=0.5."
+
+t1_gauss_freq:
+  lift_validity:
+    claim: "linear lift underfits for omega >= 1: uncorrected fold floor rises
+      with omega while poly-3 / rbf lifts track higher omega; detection is
+      TRUTH-FREE via the uncorrected fold + calibration_drift.dmu_d2_rms_per_keV2
+      (the degree-selection recipe: raise lift order until the uncorrected fold
+      stops improving)."
+  soft_vs_hard:
+    claim: "softplus Lipschitz degrades gracefully with omega; the hard spectral
+      bound breaks first (wave-7 soft >> spec, now with a knob)."
+  exponents_vs_bandwidth:
+    claim: "saturation onset (and/or beta) shifts with omega — the
+      complexity-modulates-exponents analogue (2601.13308)."
+  kill: "lift order never matters at any omega => the inductive-bias validity
+    map is empty; report as negative."
+
+t2_peak_tail:
+  claim: "the fold-vs-pointwise decoupling AND the ctxC E_fold reduction survive
+    a non-Gaussian, e-dependent-tail response; skew-drift diagnostics (06c2,
+    delta_skew) resolve the shape drift."
+  kill: "ctxC win vanishes on T2 => 'only works because Gaussian' stands;
+    must be reported as a scope limit."
+
+t3_bimodal_cross:
+  three_way:
+    claim: "conditionality is the active ingredient: QOT (conditional rank)
+      beats cpl_grank (global/unconditional rank, FlowIQN baseline) where
+      couplings matter; cpl_none ~ QOT at converged quality (1D theory:
+      batch-OT bias O(k^(-1/d)))."
+  few_nfe:
+    claim: "QOT reaches target fold/W1 quality at materially lower NFE
+      (straighter conditional paths); at high NFE all converge. Decision gate:
+      this must already show on T0 (W7 step 1) before T3 is spent."
+  kill: "no few-NFE gain on T0 => the arm shrinks to construction + negative
+    result + Q-double-duty (paper_arm_qot_coupling.md §4)."
+
+t4_heavytail:
+  claim: "tail-quantile errors (grid.quantile_abs_err_mean.0p001/0p999) show
+    earlier floors and/or smaller beta than bulk W1; ctxC does not
+    disproportionately hurt tails (uncertain — an honest test, any outcome is
+    a paper paragraph)."
+
+cross_cutting:
+  lr_policy: "if the W1 anchor scan is flat per arm, P0 is EVIDENCE (document),
+    not laziness; if it drifts, log-linear lr(log width) interpolation per arm."
+  never_fit_raw_cfm_loss: "training/validation MSE has an irreducible
+    conditional-variance floor (2506.13763) — recorded only for the
+    undertrained-point flag."
+  decoupling_robustness: "mistuned large models would depress pointwise metrics
+    too; the claimed pattern (pointwise improving while fold saturates) cannot
+    be produced by mistuning direction alone."

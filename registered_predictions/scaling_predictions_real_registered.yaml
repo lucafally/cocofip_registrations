@@ -1,0 +1,162 @@
+# Registered predictions for the REAL-MC scaling-law study — FROZEN BEFORE RW2.
+# The git timestamp of this file is the registration; fits must be reported against
+# these (pass / fail / surprise), never silently reinterpreted.
+# Sources: docs/paper_real_mc_scaling_design.md §1 (R1-R10) with R7 updated from the
+# RW1 pilot (docs/real_mc_scaling_handoff.md §1); toy precedent in
+# docs/scaling_predictions_registered.yaml.
+
+registered_at: "2026-09-03"
+frozen_before: "RW2 (base arm, d1e6-d1e9, protocol C at S* = 3e6 steps)"
+functional_form: "L(N, D_unique) = E + A/N^alpha + B/D^beta (Chinchilla form); BNSL for the regime boundary"
+fit_protocol: "summed Huber on log residuals, L-BFGS-B multistart, 2000 bootstraps,
+  largest-compute corner (w1024 x 3.42e9) held out, 1-D cross-fits, E fixed-to-floor
+  primary + E-free refit per metric, censor < 2x floor from exponents (never from E),
+  overfit-flagged cells censored from exponents, --min-d from the measured BNSL break.
+  Implemented in scripts/fit_scaling_laws.py (design §6)."
+d_axis: "scaling.d_unique_samples; compute-matched cells (D <= 1e9) and the single-/two-pass
+  cells (D >= 2e9) marked; fixed-compute-only fit variant = the pure data exponent"
+
+# Settings fixed by the RW1 pilot (all measured, handoff §1 / §4)
+protocol:
+  compute: "C (compute-matched): 3e6 steps for D <= 1e9, d1e6 capped at 1e6 steps,
+    d2e9 at 2 passes (3.9e6), d3e9 single pass (3.3e6) — compute-matched within 30 %"
+  lr_anchors: "64:1e-4, 1024:3e-5 log-linear in width, both arms (w32 -> 1e-4, w2048 -> 3e-5 clamped)"
+  gfp_context_band: 0.5
+  checkpoint_tier_primary: "raw final weights (EMA worse than raw everywhere at >= 1e6 steps)"
+  fold: "accurate uniform, n_estart 4800, param_subgrid 7, tol 1e-6; stiffness retry ladder recorded"
+  histogram_battery: "param_subgrid_storage 15, eval tol 1e-7"
+  diagnostics_process: "fresh child process from model_final_raw.pt (RW1 w1024 fold underflow fix)"
+
+metric_keys:
+  headline: [grid.kl_b500_mean, nll.nll_mean, fold.windows.bulk.median_abs_rel]
+  e_fixed_zero: [grid.kl_b500_mean, grid.kl_b100_mean, grid.cvm_excess_b500_mean,
+                 fold.windows.bulk.rms_rel_excess2_w, fold.windows.edge.rms_rel_excess2_w,
+                 fold.windows.endpoint.rms_rel_excess2_w, fold.windows.roi.rms_rel_excess2_w]
+  e_free: [nll.nll_mean]
+  e_resampled_floor_plus_numerics: [fold.windows.bulk.median_abs_rel, fold.windows.edge.median_abs_rel,
+                                    fold.windows.endpoint.median_abs_rel, fold.windows.roi.median_abs_rel,
+                                    grid.quantile_abs_err_b500_mean.0p001, grid.quantile_abs_err_b500_mean.0p01,
+                                    grid.quantile_abs_err_b500_mean.0p99, grid.quantile_abs_err_b500_mean.0p999]
+  reported_not_fitted_until_localized: [grid.w1_b500_mean, grid.ks_b500_mean]
+  floors: [docs/scaling_floors_real.yaml, docs/scaling_floors_real_numerics.yaml]
+  censor: docs/scaling_censor_floors_real.yaml
+  tiers: [grid_ema, nll_ema, grid_best, nll_best]
+
+predictions:
+  R1:
+    question: "Do bias-corrected binned KL and held-out NLL follow power laws in D_unique?"
+    claim: "beta_D(KL) in [0.6, 0.9] at plateau widths (toy T0 0.69-0.76, T2 0.86); NLL and KL
+      share beta_D within CIs."
+    source: "w23, w6"
+    gate: "R1 fails (no clean law on KL) -> stop before spending the ctxC arm (RW3)."
+  R2:
+    question: "Capacity knee on real MC"
+    claim: "knee at width >= 256 (harder target than the toy's w128-w256); w2048 ~ w1024 at D >= 1e9."
+    source: "w2r plan §5b"
+  R3:
+    question: "Do the linear CDF metrics (W1, KS) stay resolvable?"
+    claim: "No: truth floors (W1 ~ 1.3e-3 keV, KS ~ 1.2e-4) equal the best model's error ->
+      censored by D ~ 1e9; reported, not headlined."
+    source: "design §3.1.2"
+    status_at_registration: "moot until localized — RW0 numerics: W1/KS move 45 % / 17 % with the
+      storage Simpson K (a sub-bin density feature); W1 ~ 1e-2 is numerics-dominated, not
+      floor-limited. Localization job (scripts/localize_grid_numerics.py) decides a support cut
+      or drops W1/KS from the fit list. Not a scaling result either way."
+  R4:
+    question: "Fold decoupling (bulk window)"
+    claim: "base arm flattens: E_free(base, bulk) >= 2x the 3.4e-5 (+1.1e-5 numerics) truth floor
+      while KL keeps falling; the D >= 1e9 tiers separate base/ctxC at >= 3 seeds (p < 0.05)."
+    source: "w23 (E_fold base 4.0e-5, 20x floor)"
+    pilot_hint: "already visible inside one cell: w64 bulk fold saturates by ~1e6 steps
+      (4.35e-4 -> 3.95e-4) while KL falls 2.3x over the same step."
+    kill: "R4 fails with base ALSO consistent with the floor -> the real-MC fold is truth-floor-limited
+      at this exposure; the decoupling can only be bounded (report as a scope limit)."
+  R5:
+    question: "ctxC per window"
+    claim: "bulk: E_fold(ctxC) < E_fold(base); edge: E_fold(ctxC) >= E_fold(base) (inverted), both >> floor;
+      edge beta_D < bulk beta_D."
+    source: "fold_quality 2026-06-28"
+    pilot_hint: "one w64 seed showed the OPPOSITE sign (ctxC bulk worse, edge better) — no conclusion; the grid decides."
+  R6:
+    question: "Capacity null on the fold"
+    claim: "d(fold_bulk)/dN ~ 0 at D >= 1e9 for base (replicates the 2026-06-26 width-null 512-1024 at n1e9)."
+    source: "fold_quality 2026-06-26"
+  R7:
+    question: "Fixed-compute data efficiency (protocol C)"
+    claim: "L(1e8 unique, 31 passes) ~ L(1e9, 3 passes) within 10 % on KL at S* = 3e6 steps;
+      the D-exponent above 1e8 is small (unique data 1e8 vs 1e9 moves KL by <= 30 % at fixed
+      compute at every budget); the data-limited regime is D <= 1e7 (KL >= 2x higher at 1e7)."
+    source: "RW1 pilot (handoff §1: 6.8e-5 vs 6.3e-5 at 3e6 steps, w1024; 2.07e-4 vs 1.58e-4 at 1e6);
+      prior was 'within 20 %' from fold_quality 2026-06-25"
+    updated: "2026-09-03 from the pilot (was: within 20 %)"
+  R8:
+    question: "Memorization corner / real-MC N*(D)"
+    claim: "held-out-NLL turn-up (NLL_end/NLL_min > 1.05) only at D <= 1e7 & w >= 512
+      (W4c: N*(D) = 10^1.2 D^0.83 -> 1.5e6 params at D = 1e6, 1e7 at 1e7, 6.8e7 at 1e8;
+      widths w512 ~ 2.5e6, w1024 ~ 1e7 (real: 8.0e6), w2048 ~ 3e7); lambda in [0.5, 0.85]."
+    source: "w4"
+    pilot_hint: "no memorization at D >= 1e8: NLL_end/NLL_min = 1.000 in every cell, best tier == final,
+      train-heldout gap flat even at 31 passes over 1e8 with w1024."
+  R9:
+    question: "Fold-vs-KL mapping (F3)"
+    claim: "breaks for base at D >= 1e9 (fold flat, KL falling)."
+    source: "w23 F3"
+  R10:
+    question: "Regime cut"
+    claim: "a pre-asymptotic decade exists on real data too; BNSL x_break within [1e6, 1e8] ->
+      --min-d measured, not assumed (fit at --min-d 1e7 as the working default)."
+    source: "w2r plan §5d"
+    gate: "R10 (with R1) gates the ctxC arm (RW3)."
+
+kill_criteria:
+  - "R4 fails with base also consistent with the floor -> decoupling can only be bounded (scope limit)."
+  - "R1 fails (no clean law on KL) -> stop before spending the ctxC arm, as in the toy."
+
+# ----------------------------------------------------------------------------------------------
+# RW4 (d2e9 / d3e9, both arms, 5 seeds) — registered 2026-09-15 BEFORE submission, on the
+# tol-1e-7 fold numerics (template change 2026-09-15; the 176 RW2/RW3/RW5 cells are re-evaluated
+# in place at tol 1e-7 before any pooled test). Evidence base: docs/real_mc_scaling_handoff.md
+# Current picture C1-C13 (R5 at 8 seeds: bulk x0.66 [0.54, 0.81] / x0.67 [0.54, 0.82], edge x1.55 / x1.92).
+registered_at_rw4: "2026-09-15"
+frozen_before_rw4: "RW4 (d2e9 x {w256, w512, w1024}, d3e9 x {w128, w256, w512, w1024}, seeds 0-4, both arms; 70 cells)"
+rw4_numerics: "fold_accurate tol 1e-7 everywhere (RW2/3/5 re-evaluated in place); float64 solver time variable;
+  the 176 re-evaluated bulk medians of the previously tol-1e-6 cells are expected to move by -0.13..-0.40x floor
+  (C8) and the R5 ratios by < 0.03."
+rw4_numerics_outcome: "graded 2026-09-16 on 168 of 176 cells (docs/real_mc_scaling_handoff.md Log 2026-09-16, C16):
+  shift band FALSIFIED (131 re-folded cells: median +0.012x floor, q10 -0.275, q90 +0.211, 23/131 in band,
+  68/131 positive -> scatter, not bias); R5 part PASSED (ratios move <= 0.016, no verdict change). 7 cells
+  exhausted the fold ladder at 1e-7 (C17) -> RW4 on hold until the w1024 fold is reliable."
+rw4_seed_policy: "seed ids 0-4 for every cell; seed = init seed = data-order seed (sample_seed = 1000 + seed);
+  data content per seed: d2e9 windows 0-29 / 21-50 / 11-40 / 5-34 / 16-45 (30 of 51 shards, pairwise overlap
+  9-25), d3e9 all 51 shards for every seed (init replicas); pooled tests use widths >= 256 (3 widths x 5 seeds =
+  15 cells per arm and D); report the seed distribution, not only the mean."
+predictions_rw4:
+  R11:
+    question: "Does the ctxC bulk advantage persist at 2-3.4e9 unique samples?"
+    claim: "ctxC/base fold bulk (fold.windows.bulk.median_abs_rel, widths >= 256 pooled, 15 vs 15 cells,
+      two-sided Mann-Whitney) in [0.50, 0.85] with p < 0.05 at d2e9 AND at d3e9."
+    falsified_if: "p >= 0.05 or the point estimate > 0.85 at either D."
+    surprise: "< 0.50 (advantage grows with D)."
+    source: "C1 (x0.66 at d1e8 and d1e9, 8 seeds); power ~0.8 at 15 vs 15 with the observed log-sd 0.26 / 0.45."
+  R12:
+    question: "Does the edge penalty keep growing with D?"
+    claim: "ctxC/base fold edge (fold.windows.edge.median_abs_rel, same pooling) >= 1.5 with p < 0.05 at d3e9;
+      growing if the d3e9 ratio > 1.92 (the d1e9 value), flat if in [1.4, 1.92]."
+    falsified_if: "the d3e9 ratio < 1.4 or p >= 0.05 (penalty shrinks or vanishes)."
+    source: "C2 (x1.55 at d1e8 -> x1.92 at d1e9)."
+  R13:
+    question: "Does the base bulk fold stay flat at ~8x floor beyond d1e9?"
+    claim: "base fold bulk gmean at w >= 256 within [6, 12]x the combined floor 4.5e-5 at d2e9 and at d3e9
+      (i.e. in [2.7e-4, 5.4e-4]); pooled beta_D over d1e8-d3e9 (base, E fixed to the floor) < 0.15."
+    falsified_if: "the d3e9 base bulk gmean < 6x floor at >= 2 of the 3 widths (the fold does scale with D)."
+    surprise: "> 12x floor (degradation with D)."
+    source: "C5 (7-11x floor at d1e8-d1e9); C4 (beta_D 0.11-0.12 at tol 1e-6 numerics)."
+  R14:
+    question: "Is seed 0 a ctxC-specific bad init draw (C10) or a data / chance pattern?"
+    claim: "ctxC seed 0 is the worst of the 5 seeds on the bulk window at >= 2 of the 3 widths >= 256 at both
+      d2e9 and d3e9 (chance ~0.01 for both D), while base seed 0 is unremarkable."
+    falsified_if: "ctxC seed 0 is the worst at <= 1 width at either D."
+    source: "C10 (RW5: ctxC seed 0 ~2x worse at every width at d1e8, base normal)."
+kill_criteria_rw4:
+  - "an RW4 cell exhausts the 4-rung fold ladder -> the cell keeps its pointwise metrics, the fold is NA; > 2 such
+    cells per arm -> stop and read the recorded solver traces before submitting more."

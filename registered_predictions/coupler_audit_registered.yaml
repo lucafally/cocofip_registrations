@@ -1,0 +1,427 @@
+# Open predictions of the coupler calibration audit (docs/qot_calibration_audit.md, Open questions).
+# Design: docs/paper_coupler_audit_plan.md. Definitions: docs/coupler_audit_formalism.md.
+# The git timestamp of this file is the registration. Graded predictions move to the lane's Log.
+lane: qot_calibration_audit.md
+plan: paper_coupler_audit_plan.md
+scope: >
+  Toys T0 gauss_linear and T3 bimodal_cross, FM n1e8_e3, batch 1024, EMA tier, battery at
+  dopri5 tol 1e-7, medians over FM seeds; real MC on raven where stated. "pred" is always
+  computed from the coupler alone, by an audit job that finishes before the FM job is
+  submitted; its output path is added to the prediction under `audit_output` at that time.
+framing: >
+  Metric-matched audit (2026-09-30): the target metric is evaluated, with the FM battery's own
+  diagnostics (diag_grid and the fast fold of scripts/gaussian_toy_pipeline.py, as
+  scripts/audit_nfe_quality.py runs them), on a density computed from the coupler alone.
+  Variants: `raw` = the coupler density dF_hat/dy; `recal` = the marginally recalibrated
+  coupler H(F_hat(y|c)), infinite batch, H from analytic quadrature over the training context
+  law; `recal_emp` = the same with H from held-out scores (no truth); `finiteB` = the induced
+  source smoothed with the finite-batch kernel at the FM batch size B = 1024. "pred" in the
+  E2 / E3 entries below is the `finiteB` variant unless a variant is named.
+couplers_17:
+  T0: [t0twwide, sched_12ep, c1e7_box_legacy, locscale_IDINIT_12ep, locscale_12ep, locscale_2ep, c1e8_box_2ep_cov]
+  T3: [t3_twwide_tailavg, t3_lsid192_ema, t3_lsid96_ema, t3_lsid96_ep048ema, t3_lsid192_ep048ema,
+       t3_lsid48_ema, t3_locscale_IDINIT_12ep, t3_locscale_12ep, t3_sched12, t3_box_legacy_c1e7]
+reference_values:   # scripts/results/qot_audit/reanalysis/reanalysis.json, 2026-09-29
+  first_order_infinite_batch_ratio_fm_over_pred: {T0: [0.35, 0.99], T3: [0.75, 0.89]}
+  independent_w1_kev: {T0: 9.39e-4, T3: 1.523e-3}
+  best_learned_coupler_w1_kev: {T0: 8.06e-4, T3: 1.423e-3}
+predictions:
+  - id: E2-W1
+    registered: 2026-09-29
+    status: registered, not submitted
+    claim: exact push-forward W1 (integral of |T_c(F_c(y)) - F_c(y)| dy on the FM grid and contexts) with the finite-batch kernel at B = 1024, against grid.w1_mean of the existing FM runs
+    bands:
+      T3_ratio_fm_over_pred: "in [0.80, 1.05] for >= 8 of 10 couplers"
+      T0_ratio_fm_over_pred_non_locscale: "in [0.60, 1.05] for the 5 couplers that are not location-scale without identity init"
+    falsified_if: "fewer than 6 of 10 T3 couplers inside [0.80, 1.05]: the exact finite-batch prediction is no better than the first-order one; the paper states ordering and bound only"
+  - id: E2-LS
+    registered: 2026-09-29
+    status: registered, not submitted
+    claim: the two T0 location-scale couplers (locscale_12ep, locscale_2ep; first-order infinite-batch ratio 0.45 and 0.35) against the exact finite-batch prediction
+    bands:
+      ratio_fm_over_pred: ">= 0.70 for both: finite-batch smoothing explains the low ratio"
+    falsified_if: "< 0.60 for both: the flow does not inherit that source deformation; the law is a bound on T0"
+    undecided: "between 0.60 and 0.70, or the two couplers on different sides"
+  - id: E2-KL
+    registered: 2026-09-29
+    status: registered, not submitted
+    claim: predicted forward KL = mean over the FM contexts of KL(rho_c^B || gamma), B = 1024, against grid.kl_quad_mean
+    bands:
+      spearman: ">= +0.85 on T0 (n = 7) and on T3 (n = 10); the scalar imprint gives +0.75 / +0.70"
+      predicted_drop_lsid192_to_twwide_t3: ">= 4x (measured FM drop 7.9x, imprint drop 1.36x)"
+    falsified_if: "predicted drop < 2x: the KL gap is not a property of the induced source at this batch size"
+  - id: E2-KS
+    registered: 2026-09-29
+    status: registered, not submitted
+    claim: predicted KS = mean over the FM contexts of sup |T_c - id| at B = 1024, against grid.ks_mean (no unit conversion)
+    bands:
+      ratio_fm_over_pred: "in [0.70, 1.20] for >= 13 of 17 couplers"
+    falsified_if: "fewer than 9 of 17 inside the band"
+  - id: E2-RAW
+    registered: 2026-09-30
+    status: registered, not submitted
+    claim: raw coupler density against recalibrated coupler density, each scored with the FM battery metrics, against the FM
+    bands:
+      closer_variant: "|log(metric_recal / metric_FM)| < |log(metric_raw / metric_FM)| on grid.w1_mean for >= 13 of 17 couplers"
+      T0_box_raw_w1: "raw-coupler W1 >= 2x the FM W1 for sched_12ep, t0twwide and c1e7_box_legacy (their error is mostly shared)"
+      T3_raw_vs_recal_w1: "raw / recal W1 in [1.0, 3.0] for every T3 coupler (their error is mostly context-varying)"
+    falsified_if: "recal closer than raw for fewer than 9 of 17: the flow does not discard the shared miscalibration, P1 of the formalism does not describe the trained models"
+  - id: E2-EMP
+    registered: 2026-09-30
+    status: registered, not submitted
+    claim: truth-free recalibration (`recal_emp`, H from 3e7 held-out scores) against the analytic one (`recal`)
+    bands:
+      agreement: "grid.w1_mean, grid.kl_quad_mean and the fold window metric of recal_emp within 5 % of recal for >= 15 of 17 couplers"
+    falsified_if: "more than 5 couplers outside 10 %: the recalibration map needs more held-out rows or a smoother estimator than planned"
+  - id: E2-fold
+    registered: 2026-09-29
+    status: registered, not submitted
+    claim: fold.norm_window.median_abs_rel_window of the predicted response T_c(F_c(y)) (same fold routine, spectrum and window as the FM runs), B = 1024, against the FM fold
+    bands:
+      spearman_T3: ">= +0.85 (n = 10); the scalar imprint gives +0.70"
+      matched_imprint_order: "t3_lsid48_ema predicted below t3_lsid96_ep048ema and t3_lsid192_ep048ema (measured FM folds 2.71e-4 vs 5.53e-4 / 5.28e-4)"
+    falsified_if: "spearman < +0.75 or the matched-imprint order wrong: the fold is not set by the induced source; lane claim A7 stands as a limitation"
+  - id: E3-O
+    registered: 2026-09-29
+    status: registered, not submitted
+    claim: FM coupled with the oracle coupler (analytic conditional CDF as the score) on T0, 3 seeds
+    bands:
+      fm_w1_kev: "< 8.06e-4 (below every learned coupler)"
+    falsified_if: ">= 8.0e-4: the production couplers are FM-limited at n1e8_e3; T0 pairs with a predicted W1 below 1.6e-3 keV are excluded from the law, and the E3 amplitude ladder starts at 5e-3"
+    runs: ["gtoy_fmresunet_tb_uniform_cpl_oracle_n1e8_e3_e3aud_s{0,1,2}"]   # arm cpl_oracle
+  - id: E3-S
+    registered: 2026-09-29
+    status: registered, not submitted
+    claim: shared distortions added to the oracle score, d = 0.05 (S-a) and d = 0.05 sin(z) (S-b), per-context KS about 2e-2; T0 3 seeds each, S-b also on T3
+    bands:
+      fm_w1_kl_fold: "each inside [0.85, 1.15] x the oracle arm's median"
+    falsified_if: "any shared arm above 1.3 x the oracle arm on W1: the rank map does not absorb shared miscalibration at batch 1024"
+    runs: ["..._cpl_oracle_sa_..._e3aud_s{0,1,2}", "..._cpl_oracle_sb_..._e3aud_s{0,1,2}", "gtoy_tbimodal_..._cpl_oracle_sb_..._e3aud_s{0,1,2}"]
+  - id: E3-V
+    registered: 2026-09-29
+    status: registered, not submitted
+    claim: context-varying shift d = A cos(3 pi E / 18.6), A in {2.5e-3, 5e-3, 1e-2, 2e-2}, T0 3 seeds each; A = 1e-2 also on T3
+    bands:
+      fm_w1_kev: "sqrt(W1_O^2 + pred^2) within +-25 % for A in {5e-3, 1e-2, 2e-2}; pred = the audit's push-forward W1 of the synthetic coupler at B = 1024"
+      slope_fm_vs_pred: "in [0.7, 1.2] (log-log fit over the three amplitudes, oracle level subtracted in quadrature)"
+      drift: "FM mean drift delta_mu(E) against -sigma(E) m(E): Pearson >= +0.9 over the context grid at A = 1e-2"
+    falsified_if: "slope outside [0.7, 1.2], or the A = 2.5e-3 arm above 1.5 x the oracle arm"
+    runs: ["..._cpl_oracle_vs{2p5em3,5em3,1em2,2em2}_..._e3aud_s{0,1,2}", "gtoy_tbimodal_..._cpl_oracle_vs1em2_..._e3aud_s{0,1,2}"]
+  - id: E3-scale
+    registered: 2026-09-29
+    status: registered, not submitted
+    claim: context-varying scale d = 1e-2 cos(3 pi E / 18.6) z (zero mean shift) on T0, 3 seeds
+    bands:
+      ratio_fm_over_pred: "in [0.75, 1.25] after subtracting the oracle level in quadrature"
+    falsified_if: "< 0.6: the flow under-inherits scale-type source deformation (the reading of the T0 location-scale couplers)"
+  - id: E3-hf
+    registered: 2026-09-29
+    status: registered, not submitted
+    claim: context-varying shift with 6 periods over the context range, A = 1e-2, T0 3 seeds
+    bands:
+      ratio_to_vshift_1em2: "FM W1 in [0.7, 1.1] x the 1.5-period arm of equal amplitude (33-point context grid)"
+    falsified_if: "< 0.5: the conditioning path filters context structure at this frequency; the imprint then needs a context-frequency weight"
+  - id: E4
+    registered: 2026-09-29
+    status: registered, not submitted
+    claim: coupler-seed replicates of the production recipes (t0twwide x 5 seeds, t3twwide x 3 seeds), each audited, 3 FM seeds per coupler
+    bands:
+      imprint_cv: "in [5 %, 25 %] on both toys"
+      fm_w1_prediction_rms: "<= 15 % with the per-toy constant fitted on the existing pairs"
+      fm_w1_coupler_cv: "<= 15 %"
+      fold_spread_T3: "max/min over the 3 coupler seeds >= 1.5 (fold differences between recipes below 2x are then not attributable)"
+    falsified_if: "imprint spread (max/min) above 1.25 on T0: the sched_12ep vs t0twwide gap is inside the coupler draw"
+  - id: E4-KR
+    registered: 2026-09-29
+    status: registered, not submitted
+    claim: batched audit (B = 1024, N >= 2e6, M = 24) of the per-seed KR couplers on disk against their own FM runs, per D
+    bands:
+      within_D_spearman: "sliced imprint against the FM's sliced W1 over the >= 9 seeds of one D: |rho| < 0.5 at every D (the KR arms sit below the independent level; the imprint is not resolvable there)"
+    falsified_if: "rho >= +0.7 at two or more D: the imprint resolves inside the healthy KR arm"
+  - id: E5
+    registered: 2026-09-29
+    status: registered, not submitted
+    claim: held-out estimator with quadrature floor subtraction and a fixed-seed 96-repetition floor on all 17 couplers, N = 3e7, M = 24
+    bands:
+      ratio_empirical_over_analytic: "in [0.90, 1.10] for >= 15 of 17"
+      spearman_vs_fm_w1: "T3 >= +0.95 (n = 10); T0 in [+0.80, +0.95] (n = 7)"
+      resolution: "t0twwide vs sched_12ep separated at the 68 % interval at N >= 3e7"
+    falsified_if: "ratio outside [0.80, 1.20] for 5 or more couplers, or T3 spearman < +0.85"
+  - id: E7b
+    registered: 2026-09-29
+    status: registered, not submitted
+    claim: real MC (raven), fold.median_abs_rel_roi of the recalibrated coupler H(F_hat_c(y)) for the 11 fold-graded couplers, H fitted on held-out rows
+    bands:
+      recal_over_raw: "<= 0.6 for every location-scale coupler"
+      recal_over_fm: "median of |log(recal / coupled FM fold)| <= log 2 (raw coupler-only folds are 4-7x the FM's)"
+      spearman_vs_fm_fold: ">= +0.85 (raw coupler-only fold: +0.85)"
+    falsified_if: "recal >= 0.8 x raw for 6 or more couplers: the coupler's fold residual is context-varying and the FM's gain over the coupler does not come from the rank map"
+  - id: E7c
+    registered: 2026-09-29
+    status: registered, not submitted
+    claim: real MC (raven), pooled imprint against support-cut W1 of the existing coupled n1e8 checkpoints (2026-09 battery), top-class location-scale couplers
+    bands:
+      spearman: "|rho| < 0.5: expected unresolved (imprint ladder 1.2-1.4x against a 20 % coupler-seed spread)"
+    falsified_if: "rho >= +0.7: the imprint law resolves on real MC without stretching the axis; E7d is then a confirmation, not a prerequisite"
+amendments:
+  - date: 2026-09-30
+    before: "any E2 / E3 / E5 job (stamped by a second registration job)"
+    what: >
+      Pairing fix. The FM arms `qotc1e7` (T0, wave qotw3) and `qotc1e7` (T3, wave qotw4) loaded
+      /ptmp/lfall/gtoy_coupler_ckpts_qotw3/{gtoy_qot_c1e7.pt, tbimodal_gtoy_qot_c1e7.pt}, retrains with
+      the coverage penalty, not the qotw checkpoints audited as `c1e7_box_legacy` /
+      `t3_box_legacy_c1e7`. Every prediction is graded on the correctly paired couplers
+      `t0_c1e7_cov` and `t3_c1e7_cov` (3 FM seeds each). The qotw T0 checkpoint stays as an extra
+      pair with the two 1-seed FM runs that loaded it (`qotf1`, `qotf13`); the qotw T3 checkpoint
+      has only pre-tie-fix FM runs and leaves the set. Counts "of 17" are read as "of the FM-graded
+      set" (T0 8 incl. the extra pair, T3 10); thresholds scale proportionally.
+    also: >
+      New FM runs (E3, E4) fold in-run at dopri5 tol 1e-7 (inference.fold_fast.solver) so that
+      metrics.json carries the battery's converged fold; the in-run grid metrics already equal the
+      battery's tol-1e-7 values (checked on w7gvalt0_s0: w1 7.617e-4, kl 1.745e-5 in both).
+  - date: 2026-09-30
+    before: "the E8 FM runs (stamped by a third registration job); written after the E2 audits were graded"
+    what: >
+      New prediction E8-FM, prompted by the E2 result that only the finite-batch variant matches
+      the flow: the coupler-derived metrics rise with the batch size of the coupling (finiteB at
+      B = 4096 over B = 1024: T0 t0twwide W1 x1.13, KL x5.2, fold x1.9; T3 t3_twwide_tailavg W1 x1.09,
+      KL x3.2, fold x0.97). Test: the same production couplers, FM trained at batch 4096 for 12
+      epochs of the 1e8 rows (293k steps, as the batch-1024 runs), 2 seeds per toy, plus one
+      independent-coupling control per toy at the same settings.
+    E8-FM:
+      bands:
+        T0_coupled_ratio_B4096_over_B1024: {kl: ">= 2.0", fold: "in [1.3, 2.6]", w1: "in [1.0, 1.3]"}
+        T3_coupled_ratio_B4096_over_B1024: {kl: ">= 1.8", fold: "in [0.8, 1.25]", w1: "in [1.0, 1.25]"}
+        control: "independent coupling at B = 4096: W1 and KL within [0.6, 1.4] x its B = 1024 medians"
+      falsified_if: "coupled KL ratio < 1.3 on both toys: the batch size of the coupling does not control what the flow inherits"
+      undecided_if: "the independent control itself moves by more than the band"
+      runs: ["gtoy_[tbimodal_]fmresunet_tb_uniform_{cpl_qotwwide[_t3],cpl_none}_n1e8_e12_b4096_e8batch_s{0,1}"]
+  - date: 2026-09-30
+    before: "any run of scripts/audit_coupler_reweight.py (stamped by a fourth registration job); written after E2-EMP was graded FALSIFIED"
+    what: >
+      New prediction E2-EMPB. E2-EMP asked the wrong object for a truth-free route (the B = infinity
+      recalibrated density, which is not what the flow inherits). The truth-free route for the
+      finite-batch prediction is a reweighting of held-out events: with g_i the pooled rank of
+      event i and its context bin m, the generated law has density ratio 1 / t_m^B(omega_i) to the
+      truth, t_m^B = the bin's pooled-level density smoothed with the batch kernel (the kernel is
+      the smoother; no bandwidth is chosen), omega_i = (L_m^B)^-1(L_m(g_i)). Metrics: KL = mean
+      log t_m^B(omega_i); fold = weighted over unweighted folded histogram; W1 per context bin from
+      weighted against unweighted quantiles. Validation target: the truth-route `finiteB` values
+      of the E2 audit, not the FM.
+    E2-EMPB:
+      settings: "N = 1e8 held-out rows, M = 48 equal-count context bins, B = 1024; null reference = the same estimator on the analytic oracle coupler (its value is the estimator floor, subtracted in quadrature for W1 and linearly for KL)"
+      bands:
+        fold: "window metric within 20 % of truth-route finiteB for >= 14 of 18 learned couplers"
+        w1: "within 20 % for >= 12 of 18"
+        kl: "within 30 % for >= 12 of 18"
+      falsified_if: "fold outside 50 % for 9 or more couplers: the reweighting route does not reproduce the finite-batch prediction at this sample size"
+  - date: 2026-10-02
+    before: "any real-MC run of scripts/audit_coupler_reweight_real.py beyond a functional smoke (4e6 rows, the two box couplers, noise-dominated), any recalibrated-coupler fold and any re-evaluation of a flow checkpoint for this study (stamped by a registration job on raven; every study job has a later id)"
+    what: >
+      Real MC (raven). The toy study closed with two results that change what E7 has to test:
+      the object a flow inherits is the batch-smoothed induced source, not the recalibrated
+      coupler (E2-RAW, A15 of the lane), and it is computable from held-out events alone
+      (E2-EMPB, A23). The real-MC test is therefore the held-out finite-batch prediction
+      (scripts/audit_coupler_reweight_real.py) against the coupled flows, with E7b kept as
+      registered next to it. Basis of every comparison below: the 11 couplers with a coupled
+      n1e8 flow-matching arm in the S14 bundle (31 runs; lsid_e18 5, lsid_e18_r1 3, lsid_e36 3,
+      lsid_c512_e18 3, lsid_c512 3, lsid 3, lsid_r1 3, lsid_r2 3, lsid_ema4 1, box 3, box_e18 1),
+      EMA tier, median over the flow seeds of a coupler. Fold numerics: the accurate fold at its
+      present defaults (response cdf, E_start cells cut at qU, 2400 uniform nodes) for the
+      re-evaluated flow checkpoints, the raw coupler density and the recalibrated coupler
+      density alike; the stored S14 folds (density response, sub-grid 7, uncut cells) are quoted
+      next to them and are not the basis. "pred" = the held-out estimate at N = 1e9 rows of
+      shards 2-17 (no n1e8 coupler or flow saw them: the npy is the first 1.05e8 rows of shards
+      0-1), M = 48 context bins, B = 1024, fold metric median |rel| over the 46 ROI bins
+      [21, 38.6] keV ("roi"), the 39 bulk bins [23.5, 38.6] and the 7 low-edge bins. Floor = rms of
+      the same metric over 8 synthetic-null repetitions (uniform levels on the same rows; no
+      exact coupler exists on real MC). A predicted value is "resolved" when it is at least twice
+      its floor; below that it is an upper limit of twice the floor. If fewer than 8 of the 11
+      predicted roi folds are resolved at N = 1e9, the audit is repeated on 3.4e9 rows (shards
+      2-54) and that cell is graded instead. Known before this registration: the stored flow
+      folds (1.7e-4 to 5.3e-4), the stored raw coupler-only folds (5.6e-4 to 1.9e-3; Spearman
+      +0.85 against the flow folds), the S14 audit scalars, and the toy results.
+    E7-RW-valid:
+      what: "estimator checks that decide whether the held-out reading is usable; not predictions about the flows"
+      criteria:
+        events_vs_truth: "the unweighted event fold against the tritium truth histogram has chi2 per ROI bin < 3 (the beta weighting, the cut and the binning are the pipeline's)"
+        weights: "mean weight of every context bin within 1e-5 of 1"
+        floor_scaling: "null roi fold at N = 1e8 over N = 1e9 in [2.0, 5.0] (sampling noise of the levels, about N^-1/2)"
+        m_stability: "pred roi fold at M = 24 and M = 96 within 30 % of M = 48 for >= 8 of the resolved couplers"
+      if_failed: "the fold reading is reported as not validated and the E7-RW-* fold predictions are not graded on it"
+    E7-RW-order:
+      claim: pred roi fold orders the flow roi fold over the 11 couplers
+      bands:
+        spearman: ">= +0.70 (n = 11; the top five flow folds lie within their seed ranges, which caps the attainable rank agreement; raw coupler-only fold +0.85)"
+      falsified_if: "spearman < +0.40"
+    E7-RW-level:
+      claim: the predicted fold is the coupler-set part of the flow's fold - it accounts for the flow where the coupler is the limit and stays below the flow where the flow has reached its own floor
+      bands:
+        coupler_limited: "the six couplers whose flow fold exceeds 3e-4 (lsid, lsid_r1, lsid_r2, lsid_ema4, box, box_e18): flow / pred in [0.7, 2.0] for >= 4 of 6"
+        flow_limited: "the five couplers of the top class (lsid_e18, lsid_e18_r1, lsid_e36, lsid_c512_e18, lsid_c512): pred <= 1.3 x flow for >= 4 of 5 (an upper limit of twice the floor counts if it is <= 1.3 x flow)"
+      falsified_if: "pred > 1.5 x flow for 6 or more of the 11 (the flows would be better than the law the theorem says they converge to), or pred < 0.25 x flow for all six coupler-limited couplers (the coupler imprint does not set their fold)"
+    E7-RW-raw:
+      claim: the rank map and the batch remove most of the coupler's own fold error
+      bands:
+        pred_over_raw: "pred roi fold <= 0.6 x the raw coupler-only fold for all 11"
+      falsified_if: "pred >= 0.8 x raw for 6 or more"
+    E7-RW-curve:
+      claim: the folded residual CURVE of a coupled flow carries its coupler's predicted residual. D_a(j) = seed-mean flow residual of coupler a in ROI bin j minus the mean of that quantity over the 11 couplers (removes what all flows share, numerics included); P_a(j) the same for the predicted residual (the sampling noise of the held-out levels is common to all couplers on the same rows and cancels)
+      bands:
+        pooled_pearson: ">= +0.5 over the 11 x 46 points"
+        pooled_slope: "least-squares slope of D on P through the origin in [0.5, 1.5]"
+        per_coupler: "Pearson >= +0.3 for >= 7 of 11"
+      falsified_if: "pooled Pearson < +0.2: the differences between the flows' folded residuals are not the couplers' imprints"
+    E7-RW-batch:
+      claim: on the 0.386 keV fold bins the predicted fold depends weakly on the batch size, while the predicted KL does not (a bin integrates over the level scales the batch kernel smooths; the fold reads the P-P curve at the bin edges)
+      bands:
+        fold_ratio_B4096_over_B1024: "in [0.8, 1.25] for >= 8 of 11"
+        kl_ratio_B4096_over_B1024: ">= 1.5 for >= 8 of 11 (debiased KL, mean over the context bins)"
+      falsified_if: "fold ratio outside [0.67, 1.5] for 6 or more"
+    E7-RW-recal:
+      claim: the infinite-batch recalibrated coupler density (E7b's object, through the flow battery) against the held-out finite-batch prediction, roi fold
+      bands:
+        recal_over_pred: "in [0.7, 3.0] for >= 8 of 11 (toys: 3x on the bimodal toy with narrow fold bins)"
+      falsified_if: "recal > 5 x pred for 6 or more: on real MC, too, the infinite-batch density is not the object"
+    E7-RW-KL:
+      claim: density-level metrics of the real-MC flows are the flows' own - the coupler-set KL is below them
+      bands:
+        floor_property: "pred KL (floor-subtracted, mean over the 48 bins) < grid.kl_b500_mean of the re-evaluated flows (support-cut battery, median over seeds) for >= 9 of 11"
+        ordering: "not predicted (expected unresolved: the uncoupled flow reads 2.4e-4 against 2.1e-4 for a coupled one)"
+      falsified_if: "pred KL > 2 x flow KL for 4 or more (a flow with less divergence than its induced source contradicts T1; the binned flow KL is a lower bound of the unbinned one, so a factor is allowed)"
+    E7b:
+      amended: "basis as above (cdf response for raw, recalibrated and flow); H = the pooled score CDF on the 1e9 held-out rows (knots 0.1 apart in the probit, >= 1e4 rows per interval, tails to 10 rows), written by the reweighting run; bands unchanged"
+    E7c:
+      amended: "the support-cut W1 is grid.w1_b500_mean of the re-evaluated flows; the imprint is the held-out finite-batch W1 of the induced source (imprint, floor-subtracted, mean over the 48 bins), with the S14 audit's pooled imprint next to it where that coupler was audited; band unchanged, over the five top-class couplers and over all 11"
+  - date: 2026-10-02
+    before: "any coupler result of the production reweighting jobs 30834135 (1e9 rows) and 30834137 (3.4e9 rows) was read: their output had reached the setup stage (load, kernels, the events-versus-truth check); written 2026-10-02 11:30 CEST and stamped by a second registration job"
+    seen_since_the_first_stamp: >
+      (i) The events-versus-truth check of job 30834135 on 1e9 rows: chi2 per ROI bin 68.7, of
+      which the last three ROI bins carry 68.7 - 1.9 (37.64 / 38.02 / 38.41 keV: -1.2e-3, -2.0e-3,
+      -2.5e-2 against a sigma of 2.8 to 4.6e-4); the other 43 bins have chi2 1.9 and the
+      threshold bin at 21.04 keV reads -3.2e-4 +- 2.5e-4. (ii) One functional smoke of a flow
+      re-evaluation (lsid_e18 seed 0, job 30834138): under the present fold defaults its roi
+      median is 3.15e-4 where the stored fold has 1.69e-4, because the stored fold's +6e-3
+      quadrature excess in the threshold bin had cancelled a -5.7e-3 residual of the flow
+      there; the ROI normalization spreads that bin as +2.2e-4 over the other 45 bins (bulk
+      median 1.67e-4 against 1.47e-4 stored). (iii) Functional smokes of the raw and the
+      recalibrated box coupler through the pipeline (jobs 30834139 / 30834140, H from 4e6 rows).
+    E7-RW-valid:
+      amended: "events_vs_truth is read on the 43 ROI bins below 37.4 keV: chi2 per bin < 3. The three endpoint bins differ between the pipeline's beta source and the tritium truth histogram (every stored flow fold has its ROI maximum, 1.2 to 1.6e-2, in the last bin); the reweighting ratio is taken on the same rows and does not contain that difference. The criterion as first written (all 46 bins) is not met and is reported as such."
+    bulk_reading:
+      what: >
+        The roi median of a flow is now mostly the image of its threshold-bin residual under
+        the ROI normalization, which need not be a coupler imprint. E7-RW-order, E7-RW-level,
+        E7-RW-raw, E7-RW-batch and E7-RW-recal are therefore graded twice with unchanged bands:
+        on the roi median as first written (ROI-normalized), and on the bulk median of the
+        residual normalized over the bulk window [23.5, 38.6] keV on both sides ("bulk_bn": the
+        convention of the toy lane's norm-window key; it does not see the threshold bin). The
+        coupler groups of E7-RW-level stay as named. E7-RW-curve is graded on the 46 ROI bins as
+        written and on the 39 bulk bins with the bulk normalization.
+      which_counts: "both verdicts are reported; where they differ the bulk reading describes the coupler-set fold and the roi reading the lane's headline metric"
+  - date: 2026-10-02
+    before: "any audit of a coupler under the n1e6 / n1e7 normalizers, any audit of the data-matched couplers (lsid_c512_d1e6, lsid_c512_d1e7, lsid_e18_d1e7) and any re-evaluation of a flow trained on 1e6 or 1e7 rows (stamped by a third registration job; written 2026-10-02 12:20 CEST)"
+    seen_before_this_registration: >
+      The n1e8 study in progress: held-out predictions of 10 of the 11 couplers (roi 2.6e-4 to
+      6.3e-4 at N = 1e9, M = 48, B = 1024, floor 9.4e-5) and 30 of the 38 re-evaluated n1e8
+      flows; flow / pred on the roi median 0.79 to 1.48 for those 10 couplers; the predicted roi
+      fold at B = 256 / 4096 is about 0.5x / 2x the B = 1024 value (E7-RW-batch will not hold
+      as registered). The stored S14 folds of the 44 runs named below (density response, uncut
+      cells): coupled 1.1e-4 to 1.6e-3, uncoupled 1.7e-4 to 1.1e-3. Nothing of the runs below
+      under the present fold defaults, and no audit of any coupler under their normalizers.
+    E7-RW-D:
+      what: >
+        Out-of-sample test of the level law on the existing data-size ladder. Cells = coupler x
+        training-set size with a coupled flow in the S14 bundle, EMA tier, median over seeds:
+        D = 1e6 rows: box (1 seed), lsid (3), lsid_c512 (5), lsid_c512_d1e6 (3; coupler pretrained on
+        the same 1e6 rows); D = 1e7 rows: box (1), lsid (3), lsid_c512 (5), lsid_ema4 (1),
+        lsid_c512_d1e7 (7), lsid_e18_d1e7 (3; couplers pretrained on the same 1e7 rows). 32 coupled
+        runs, 12 uncoupled. Each flow was trained at batch 1024 for 879k steps in the normalizer
+        fitted on its own subset (e_in_mean 30.80781 / 30.80569 against 30.80493 at 1e8), and
+        its coupler is evaluated in that normalizer, as in training. pred = held-out estimate
+        at N = 1e9 rows of shards 2-17, M = 48, B = 1024, in the cell's normalizer; flow =
+        re-evaluated with the present fold defaults and the battery of the n1e8 study.
+      bands:
+        level: "flow roi fold / pred in [0.7, 1.5] for >= 7 of the 10 cells (the n1e8 range so far is 0.79 to 1.48)"
+        starved_coupler: "pred of lsid_c512_d1e6 >= 2 x pred of lsid_c512 at D = 1e6 (its stored flow fold is 9x the other's)"
+        order: "Spearman of pred against flow roi fold over the 10 cells >= +0.7"
+        same_coupler_across_D: "for box, lsid and lsid_c512 the pred at D = 1e6 and 1e7 is within 25 % of the pred at 1e8 (only the normalizer differs)"
+      falsified_if: "level band met by fewer than 4 of 10 cells, or the starved coupler's pred below 1.3 x that of lsid_c512"
+      note: "a flow below 0.7 x pred is a flow better than the law the theorem assigns to the converged model; at D = 1e6 (1001 passes over 9e5 rows) the model need not be at the population optimum, and such cells are reported as that"
+      bulk_reading: "graded a second time on the bulk-normalized bulk median, as the n1e8 predictions"
+  - date: 2026-10-02
+    before: "any real-MC flow trained at a batch size other than 1024 (none exists; stamped by a fourth registration job; written after the n1e8 study and the data-size ladder were graded)"
+    status: registered, not submitted (training compute on raven is the user's decision)
+    E7-RW-B:
+      what: >
+        The batch size as an intervention on real MC. E7-RW-batch (the predicted fold depends
+        weakly on the batch) was falsified by the audit itself: the predicted roi fold at
+        B = 256 / 4096 is 0.34-0.82 / 1.8-3.1 of the B = 1024 value, and the batch-1024 flows sit
+        at the B = 1024 prediction. Test: coupled flows of the n1e8 recipe (FMResUNet w512
+        ctxC_soft, npy 1e8 rows, EMA tier) at training.batch_size 256 for 3 epochs of the 9e7
+        training rows (1.05e6 steps; the batch-1024 arms ran 8.79e5), couplers lsid_e18 and lsid,
+        3 seeds each, plus 2 uncoupled seeds at the same settings; evaluated like the
+        re-evaluations of the n1e8 study. "model" = predicted residual curve at B = 256 (job
+        30834135, N = 1e9, M = 48) plus the common part of the batch-1024 flows (mean over the 11
+        couplers of flow minus prediction).
+      bands:
+        roi_lsid_e18: "seed median in [1.6e-4, 3.0e-4] (model 2.3e-4; batch-1024 flows 3.7e-4)"
+        roi_lsid: "seed median in [2.5e-4, 4.7e-4] (model 3.6e-4; batch-1024 flows 5.4e-4)"
+        threshold_bin: "lsid_e18 in [-6.0e-3, -3.2e-3] (model -4.6e-3; batch 1024: -5.5e-3); lsid in [-7.3e-3, -3.9e-3] (model -5.6e-3; batch 1024: -8.5e-3)"
+        curve: "per coupler, the difference of the seed-mean residual curves (batch 256 minus batch 1024) against the difference of the predicted curves (B = 256 minus B = 1024) over the 46 ROI bins: Pearson >= +0.5"
+      falsified_if: "the roi median of both couplers is >= 0.9 x that of their batch-1024 flows: the batch size of the coupling is then not part of what a real flow inherits"
+      undecided_if: "the uncoupled control at batch 256 folds at more than 1.5 x or less than 0.67 x the uncoupled batch-1024 arm (5.1e-4): the flow's own error moved with the batch size"
+      optional_arm: "batch 4096 for 40 epochs (the step count of the batch-1024 arms): model roi 8.5e-4 (lsid_e18), 1.1e-3 (lsid), threshold bin -9.3e-3 / -1.2e-2"
+  - date: 2026-10-02
+    before: "any result of the E7-RW-B runs (submitted 2026-10-02 14:55 CEST, about 8 h each; stamped by a fifth registration job)"
+    E7-RW-B:
+      status: submitted, not graded
+      jobs: "30838659-61 (lsid_e18, seeds 0-2), 30838662-64 (lsid, seeds 0-2), 30838672-73 (uncoupled, seeds 0-1; 30838665-66, built from an older uncoupled config that carries training.max_steps 880000, were cancelled while pending)"
+      runs: "cplaudr_b256_{qotlsid_e18,qotlsid}_n1e8_s{0,1,2}, cplaudr_b256_none_n1e8_s{0,1}"
+      code: "branch coupler-audit-real-mc, commit 36da1c9"
+      as_run: >
+        Each config is the params.yaml of a batch-1024 run of the same arm (qtr_qotlsid_e18_n1e8_s0,
+        qtr_qotls_n1e8_s0, qtr_none_n1e8_s5; the three differ only in the coupler block, the seed
+        and the run name) with training.batch_size 256, training.epochs 3, the
+        seed and the run name replaced; learning rate, schedule ratios, EMA decay and the coupler
+        block are unchanged. Evaluation is the run's own diagnostics on the EMA weights with
+        configs/bdw_battery_overrides.yaml and the fold at its defaults - the evaluation of the
+        re-evaluations, without a separate re-evaluation job. Bands, falsifier and the undecided
+        clause are those of the amendment above, unchanged.
+      seen_before_submission: "one functional smoke (job 30838033: lsid_e18, 1e6 rows, 1 epoch; fold 5.8e-3, no information on the bands); 26 ms per step"
+      cost: "8 runs x about 8 h on one A100 (the amendment above said about 40 A100-h; the smoke gives about 64)"
+  - date: 2026-10-06
+    before: "any real-MC flow trained at batch 4096, any box flow at batch 256 and any third uncoupled seed at batch 256 (none exists; stamped by a sixth registration job; written after E7-RW-B was graded undecided on 2026-10-06 and before any of these runs was submitted)"
+    status: registered; submitted 2026-10-06 right after the stamp (job ids in the lane's Resume here and the manifest)
+    E7-RW-B2:
+      what: >
+        The verdict design for the batch size on real MC. E7-RW-B (batch 256) came out undecided
+        by its control clause: the uncoupled arm's roi fold rose 3.45x through a low-edge deficit
+        (bulk-normalized bulk median x1.06) while the coupled arms fell to 0.55 / 0.38 of their
+        batch-1024 flows (0.89 / 0.58 of the model) and the part the coupled flows share kept the
+        batch-1024 shape and size (Pearson +0.99, median ratio 0.79). The control clause therefore
+        recorded the independent coupling's own batch sensitivity, not a change of what the
+        coupled flows carry; it is replaced by a clause on the shared part. Arms: (a) the n1e8
+        recipe at training.batch_size 4096 for 40 epochs (8.79e5 steps = the step count of the
+        batch-1024 arms; 4x their sample passes), couplers lsid_e18 and lsid, 3 seeds each, plus
+        2 uncoupled seeds; (b) at batch 256 for 3 epochs: the box coupler, 3 seeds (its model at
+        256 is 5.1e-4, far above the 2.0e-4 both lsid arms reached), and a third uncoupled seed.
+        Model = predicted residual at B (job 30834135, N = 1e9, M = 48) plus the common part of
+        the batch-1024 flows (A26); the model values are coupler_audit_real/numbers.json
+        `batch_model` as rebuilt on 2026-10-06 (jobs 30943116, 30946217). Evaluation as for
+        E7-RW-B (the run's own battery on the EMA weights, present fold defaults).
+      bands:
+        roi_4096: "seed median lsid_e18 in [5.9e-4, 1.10e-3] (model 8.5e-4; batch-1024 flows 3.7e-4); lsid in [7.7e-4, 1.43e-3] (model 1.10e-3; batch 1024: 5.4e-4)"
+        threshold_bin_4096: "lsid_e18 in [-1.21e-2, -6.5e-3] (model -9.3e-3; batch 1024: -5.5e-3); lsid in [-1.6e-2, -8.6e-3] (model -1.24e-2; batch 1024: -8.5e-3)"
+        kl_4096: "flow grid.kl_b500_mean over the batch-1024 flow KL in [1.5, 4.0] for both couplers (additive form of A30: 1.44e-4 + 1.13 x predicted 4.4e-4 / 4.0e-4 = 6.4e-4 / 6.0e-4 against 2.6e-4 / 2.2e-4, i.e. 2.5x / 2.7x)"
+        curve_4096: "per coupler, (seed-mean residual at 4096 minus at 1024) against (prediction at 4096 minus at 1024) over the 46 ROI bins: Pearson >= +0.5 and slope in [0.5, 2.0] (predicted change rms 1.1e-3 for lsid_e18 against a seed s.e.m. of 2-4e-4 per bin)"
+        differential_4096: "(lsid minus lsid_e18) seed-mean residual at 4096 against the predicted difference at 4096: Pearson >= +0.7 and slope in [0.6, 1.6] (at 256 the same reading gave +0.95 and 1.56, and 0.96 against the batch-1024 predicted difference)"
+        shared_part_4096: "mean over lsid_e18 and lsid at 4096 of (seed-mean residual minus prediction at 4096) against the batch-1024 common part: Pearson >= +0.8 and median |.| ratio in [0.5, 2.0] (at 256: +0.99, 0.79)"
+        box_256_level: "box seed median roi in [3.5e-4, 6.6e-4] (model 5.1e-4; batch-1024 box flows 7.2e-4): the level at batch 256 is the coupler's; <= 2.6e-4: the level is the flow's (the two lsid arms sit at 2.0-2.1e-4); threshold bin in [-9.0e-3, -4.8e-3] (model -6.9e-3; batch 1024: -1.24e-2); curve change Pearson >= +0.5"
+        uncoupled: "roi median at 256 over 3 seeds in [1.0e-3, 2.5e-3] (two seeds gave 1.5e-3 and 2.0e-3); at 4096 over 2 seeds in [1.5e-4, 4.6e-4] = 0.3-0.9 x the batch-1024 arm (the independent flow's own error falls with the batch, as its rise at 256 and the toys' control at 4096 say); falsified for this arm if the 4096 median >= 5.6e-4"
+      falsified_if: "with the shared-part clause met, both 4096 couplers' roi medians are <= 1.2 x their batch-1024 flows: the batch size of the coupling is then not part of what a real flow inherits"
+      undecided_if: "the shared-part clause fails at 4096 (the part the coupled flows share moved with the batch size), or fewer than 2 seeds per 4096 coupler arm land"
+      verdict_rule: "pass = all roi, threshold-bin, kl, curve and differential bands at 4096 met; otherwise band missed, with the failing clauses listed; the box level and the uncoupled arm are graded as their own rows (builder B2_* constants)"
+      cost: "8 runs at 4096 x about 17-22 h on one A100 (smoke job 30946186: 91 ms per step after warm-up; the batch-256 smoke over-read its production step time by 1.3x) + 3 box runs and 1 uncoupled run at 256 x about 5-6 h: about 160-200 A100-h. The 4096 runs carry training.preemption (margin 1200 s): a run that reaches the 24 h limit checkpoints, skips its diagnostics and is continued in place with data_pipeline.py --resume auto"
+      code: "branch coupler-audit-real-mc at e4a56be plus the uncommitted builder and submitter of 2026-10-06 (batch_model_ladder, batch_shared_numbers, batch_differential, the E7-RW-B2 grading; --preemption-margin); the stamp job prints the sha256 of the yaml, the builder and the submitter"
+      seen_before_submission: "the batch-256 result of E7-RW-B (graded), the predictions at all three batch sizes (job 30834135), one functional smoke at 4096 (job 30946186: lsid_e18, 1e6 rows, 1 epoch, 220 steps; fold 3.5e-2, no information on the bands)"

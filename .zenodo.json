@@ -1,0 +1,11 @@
+{
+  "title": "Registered predictions of the conditional-coupling flow-matching studies (cocofip registrations)",
+  "upload_type": "other",
+  "description": "Public, self-contained record of the pre-registered predictions of a series of studies on conditional couplings for flow matching (KR-AQCOT and its baselines) and on flows modelling Monte-Carlo simulations: prediction files, registration stamps (sha256 of the prediction file and study configuration printed by a scheduler job before the first graded run) and the held-out audit files a registration depends on. The sbibm benchmark registration (stamps A and B) was published before the study-B flows were trained. The code lives in a separate repository.",
+  "creators": [
+    {"name": "Fallböhmer, Luca", "affiliation": "Max-Planck-Institut für Kernphysik, Heidelberg"}
+  ],
+  "license": "cc-by-4.0",
+  "access_right": "open",
+  "keywords": ["pre-registration", "flow matching", "conditional coupling", "simulation-based inference", "sbibm", "Monte-Carlo simulation"]
+}

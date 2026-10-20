@@ -1,0 +1,138 @@
+# Registered predictions of the Bernstein-DNF scale-up study (docs/bernstein_dnf_scaling_plan.md §1).
+# Written 2026-09-17 before any BD job was submitted. Graded entries move to the lane doc's Log.
+lane: bernstein_dnf_scaling.md   # created with W1's first numbers
+metric_primary: fold.windows.bulk.median_abs_rel   # uniform fold n_estart 2400, psg 7, tier per B6
+metrics_secondary: [fold.windows.edge.median_abs_rel, fold.median_abs_rel_roi, grid.kl_b500_mean, nll.nll_mean]
+# 2026-09-18 (user request): density-level comparisons also read the CDF-space pair that the
+# battery already computes at no extra cost — W1 = sum |dF| w (L1 of the CDF difference) and
+# CvM = sum dF^2 w (squared L2), i.e. grid.w1_b500_mean / grid.cvm_b500_mean, with the
+# noise-subtracted grid.cvm_excess_b500_mean as the one with a floor at 0. KL is peak-weighted
+# and KS is a sup, so neither sees a broad displacement of mass; W1/CvM do.
+metrics_density: [grid.kl_b500_mean, grid.w1_b500_mean, grid.cvm_excess_b500_mean, grid.ks_b500_mean]
+reference_cell: "bd_ref_d32_k12_h64_b2_n1e8 (879k steps at batch 1024, lr 5e-4, SiLU hypernet)"
+fm_comparators:
+  uncoupled_ctxC_n1e8: {runs: "*_qtr_none_n1e8_s*", fold_roi_median: 2.98e-4, fold_roi_range: [2.4e-4, 8.1e-4], seeds: 7, note: bimodal}
+  coupled_e18_n1e8: {runs: "*_qtr_qotlsid_e18*_n1e8_s*", fold_roi_median: 1.78e-4, seeds: 8}
+predictions:
+  - id: B1
+    registered: 2026-09-17
+    wave: BD1
+    status: "graded 2026-09-17 — PASS at the top of the band: ROI median 7.87e-4 [7.41, 8.70]e-4, CV 8 % (jobs 30278146-48); bulk 5.0e-4 median; lane D12"
+    claim: 3-seed median fold ROI of the reference cell lies inside the uncoupled FM band and the seeds are unimodal
+    bands: {fold_roi_median: "[3.5e-4, 8e-4]", seed_cv: "< 0.35"}
+    falsified_if: "median > 1.0e-3 (worse than every FM seed) or < 2.4e-4 (better than every FM seed: replicate before believing)"
+  - id: B2
+    registered: 2026-09-17
+    wave: BD2
+    status: "graded 2026-09-18 — PASS provisionally (1 seed per cell): d64_k12_h64_b2 reaches bulk 0.33x (band <= 0.67) and KL b500 0.54x (band <= 0.77) of the 3-seed reference band, from one cell at 0.25 M params and no extra wall (jobs 30282997-30283009; lane D16). Promote to [M] only after the 3-seed top-up (Resume here step 2)"
+    claim: at the full 879k-step budget at least one capacity cell converts into a better bulk fold and a better KL
+    bands: {bulk_ratio_best_over_ref: "<= 0.67", kl_b500_ratio_best_over_ref: "<= 0.77"}
+    falsified_if: "no seeded W2 cell reaches bulk ratio <= 0.8"
+  - id: B3
+    registered: 2026-09-17
+    wave: BD2
+    status: "graded 2026-09-18 — SPLIT (1 seed per cell): density clause HOLDS (axis A (M,k) moves KL by 0.38-0.54x, axis B (h,b) not at all, 1.05-1.12x); fold clause DOES NOT hold (bulk: axis A 0.33x vs axis B 0.47x). Refinement on record: axis B owns the LOW EDGE (0.44-0.46x vs 0.61-0.63x for axis A). Neither falsifier fired (bands were not both reversed); lane D16"
+    claim: axis attribution — (M, k) moves KL b500 more than (h, b); (h, b) moves the bulk fold more than (M, k)
+    bands: {kl_axis_ratio: "max KL gain on axis A > max KL gain on axis B", fold_axis_ratio: "max bulk gain on axis B > max bulk gain on axis A"}
+    falsified_if: "both rankings reversed on the seeded cells"
+  - id: B4
+    registered: 2026-09-17
+    wave: BD4
+    claim: with the W2 winner the data ladder converts from n1e7 to n1e8 (the h64 ladder did not)
+    bands: {bulk_n1e8_over_n1e7: "<= 0.8 (3-seed medians)"}
+    falsified_if: ">= 0.9"
+    status: "graded 2026-09-21 — FALSIFIED AS A BAND: bulk(n1e8)/bulk(n1e7) = 3.970e-4 / 3.077e-4 = 1.29x at d128_k12_h256_b4, 3 seeds per rung, past the 0.9 falsifier. INTERPRETATION CORRECTED the same day: this does NOT show that data saturates. The BD4 design is compute-matched at 879k steps, where the cell is demonstrably optimization-limited (4x fewer steps costs it 2.32x KL, D31), so it cannot extract all the information in 1e7 rows and extra rows have nothing to bite on - the data axis and the step budget are confounded. The point estimates actually FAVOUR n1e8 on the peak-weighted and sup metrics (KL 0.87x, KS 0.84x, L-inf 0.81x) but the seed ranges overlap; bulk is the only metric going the other way and bulk never separates cells (D25). 1e6 -> 1e7 does separate on everything. Honest statement: n1e8 did not convert AT THIS CAPACITY AND STEP BUDGET; the levers are the step budget and capacity, then the data axis again. B13 re-tests both rungs at a longer budget; lane D32"
+  - id: B5
+    registered: 2026-09-17
+    wave: BD5
+    claim: inference-cost ratios at matched quality on 1 x A100 (and 1 CPU core for the density workload)
+    bands:
+      density_vs_fm_midpoint16: ">= 10x"
+      density_vs_fm_dopri5_1e-6: ">= 50x"
+      density_cpu_vs_fm_cpu: ">= 20x"
+      sampling_vs_e18_8calls: ">= 2x"
+      sampling_vs_uncoupled_91calls: ">= 20x"
+    status: "graded 2026-09-21, REGRADED the same day at the QUALITY-MATCHED settings (lane D33) after the first grading used midpoint-16, which neither FM arm can run the density workload at within 1.25x of its own fold (QOT C9: 64 fixed steps uncoupled, 32 coupled e18). SPLIT along the workload. ALL DENSITY CLAUSES PASS at the production cell d128_k12_h256_b4: 52.2x vs uncoupled and 26.2x vs coupled e18 (band >= 10x), 235x / 151x vs dopri5 1e-6 (band >= 50x), and CPU 50.8x (band >= 20x) - the earlier 12.7x CPU FAIL was an artifact of the unmatched setting and is withdrawn. BOTH SAMPLING CLAUSES FAIL: 0.55x vs coupled e18 at euler-8 (band >= 2x, past the >= 1x falsifier) and 8.49x vs uncoupled at its matched midpoint-64 (band >= 20x). Headline: the DNF is a density engine, not a sampling engine; lane D29, D30, D33"
+    falsified_if: "any density ratio < 1, or sampling vs e18 < 1"
+  - id: B6
+    registered: 2026-09-17
+    wave: BD1
+    status: "graded 2026-09-17 — FAIL as registered: raw KL b500 better than EMA by 0.2-0.4 % in 3/3 seeds, NLL EMA better by <= 5e-6 (below resolution); tiers equivalent, fold at raw tier not computed; lane D13"
+    claim: for the max-likelihood DNF at lr 5e-4 the EMA tier beats the raw tier on the bulk fold and on KL b500 (opposite to the FM's RW C14)
+    bands: {seeds_with_ema_better_on_both: ">= 2 of 3"}
+    falsified_if: "raw better on both in >= 2 of 3 seeds"
+  - id: B7
+    registered: 2026-09-17
+    wave: BD0
+    status: "graded 2026-09-17 — PASS: 4.0x samples/s on the pipeline path (69.5k vs 17.3k, jobs 30275386/30275387, n1e7 x 1 epoch), bulk fold / KL b500 / NLL within 1.3 %; synthetic profiler 8.2x per step (lane D3, D11)"
+    claim: the throughput work reaches >= 2.5x samples/s without changing the optimizer trajectory
+    bands: {samples_per_s_ratio: ">= 2.5", metrics: "3-seed W1 metrics inside the B1 band; loss curves overlap to seed noise"}
+    falsified_if: "< 1.5x, or any W1 metric outside the B1 band after the change"
+  - id: B8
+    registered: 2026-09-18
+    wave: BD2 (combination probe)
+    registered_before: "jobs 30291435-30291439 submitted 2026-09-18 11:01, nothing had run"
+    status: "graded 2026-09-18 — FAIL as registered: no combination cell reached either band. d64_k12_h256_b4 bulk 4.364e-4 / edge 9.369e-4, d64_k12_h512_b2 5.443e-4 / 8.909e-4, d128_k12_h256_b4 3.430e-4 / 1.740e-3 (bands bulk <= 1.8e-4 AND edge <= 8e-4). Against the now-SEEDED winner (bulk median 3.525e-4, edge 1.474e-3) the two b4/h512 cells do cut the edge to 0.60-0.64x, but the edge seed spread at that cell is 2.48x, so a 1-seed 0.60x is not resolved. What the wave did buy: d128_k12_h256_b4 has the best KL of the study (9.353e-5 = 0.29x of the reference, 0.50x of the seeded winner) and the best L-inf (8.012e-4); lane D22-D24"
+    claim: the degree axis (bulk/KL winner d64) and the conditioner axis (low-edge winner h256_b4 / h512) compose — their product cell beats d64_k12_h64_b2 on the bulk AND on the edge
+    bands: {bulk: "<= 1.8e-4", edge: "<= 8e-4"}
+    falsified_if: "the edge does not improve on d64_k12_h64_b2's 1.03e-3 (then the axes do not compose and the production cell stays the plain d64_k12_h64_b2)"
+    cells: [d64_k12_h256_b4, d64_k12_h512_b2, d128_k12_h256_b4]
+    note: "read at 1 seed each against the 3-seed reference spread; the winner's own seeds 1,2 land in the same wave"
+  - id: B9
+    registered: 2026-09-18
+    wave: BD2 (post hoc on existing run dirs)
+    registered_before_looking: true
+    data_on_disk: true      # weaker than B8: the numbers existed before the prediction, they had not been read
+    claim: "W1 and CvM are not redundant with KL — they see the LOW EDGE that KL is blind to. The conditioner cells (h512_b2, h64_b4, h256_b4) are KL-neutral (1.05-1.12x, D16) but cut the edge to 0.44-0.46x; because W1/CvM integrate the CDF error over the whole E_dep range they should improve there where KL does not"
+    bands: {conditioner_cells_w1_ratio: "<= 0.83 (i.e. >= 1.2x better than the reference median)", cvm_excess_same_direction: true}
+    status: "graded 2026-09-18 — REFUTED, the falsifier fired as written: Spearman(KL, W1) = +0.91 over the 16 unique cells and every conditioner cell sits inside the 1.52x reference-seed spread on W1. Direction inverted too: the conditioner cells are 1.33-1.49x (W1) and 1.69-2.11x (CvM excess) WORSE than the reference while cutting the edge to 0.45-0.48x, against a registered band of <= 0.83x. W1 and CvM are +0.99 correlated with each other and 1.4-2x noisier across seeds than KL; lane D20"
+    falsified_if: "W1 and CvM track KL across the 17 BD cells (Spearman(KL, W1) >= 0.9) with every conditioner cell inside the reference-seed spread — then the pair adds nothing over KL and the lane keeps KL + KS"
+  - id: B10
+    registered: 2026-09-18
+    wave: BD2 / D15 comparators (post hoc on existing run dirs)
+    registered_before_looking: true
+    data_on_disk: true
+    claim: "in CDF space the DNF leads the FM comparators on W1 and CvM as it does on KS and L-inf (3.3-4x, D15), rather than trailing as it does on the peak-weighted KL/NLL (1.3-1.5x) — the DNF/FM ordering is a property of the metric's weighting, not of which model is closer to the truth"
+    bands: {dnf_over_fm_w1: "<= 0.67 (DNF at least 1.5x better)", dnf_over_fm_cvm_excess: "<= 0.67"}
+    status: "graded 2026-09-18 — SPLIT, not falsified. CvM excess PASSES at both DNF cells (winner d64_k12_h64_b2 0.43x, d128_k12_h64_b2 0.19x of the better FM arm; band <= 0.67). W1 passes only at d128 (0.57x); the production winner is 0.87x, inside the 1.52x seed spread and therefore unresolved. The DNF is better than both FM checkpoints on both metrics, so the falsifier did not fire. Bonus on record: the coupled e18 FM has the BEST FM KL and the WORST FM W1/CvM - the ordering inverts between peak-weighted and CDF-integral metrics; lane D21"
+    falsified_if: "the DNF is worse than both FM checkpoints on W1 or on CvM excess — then the CDF-sup lead of D15 is a sup artefact and does not generalise to the integral CDF metrics"
+  - id: B11
+    registered: 2026-09-18
+    wave: BD2 (seeding gate)
+    registered_before: "jobs for d128_k12_h256_b4 and d64_k12_h256_b4 seeds 1,2 submitted 2026-09-18 16:5x; nothing had run"
+    claim: "the bulk fold is not a rankable axis at this budget. Having found the bulk seed spread to be 2.25x at d64_k12_h64_b2 (and the edge 2.48x) against 1.37x/1.09x at the reference cell, no BD2 cell's 3-seed bulk median will separate from the seeded winner's 3.525e-4 beyond the seed ranges — so the production cell must be chosen on the density metrics (KL / NLL / KS / CvM, seed spreads 1.06-1.13x), where d128_k12_h256_b4 leads by 2x"
+    bands: {bulk_medians_within: "all three seeded cells inside 0.6-1.6x of 3.525e-4 with overlapping seed ranges", density_ordering_stable: "d128_k12_h256_b4 keeps the best KL at 3 seeds, spread <= 1.2x"}
+    falsified_if: "any 3-seed cell reaches a bulk median <= 2.1e-4 (0.6x of the winner) with its seed range not overlapping the winner's [1.78, 4.01]e-4 — then the bulk IS rankable and the 1-seed BD2 ordering deserves rescuing"
+    cells: [d128_k12_h256_b4, d64_k12_h256_b4]
+    status: "graded 2026-09-19 — PASS on the main claim, one band missed. Bulk: d64_k12_h256_b4 median 3.335e-4 (0.95x the winner) and d128_k12_h256_b4 3.970e-4 (1.13x), both inside 0.6-1.6x with seed ranges overlapping the winner's [1.78, 4.01]e-4 — the falsifier did not fire and the bulk does not separate cells at this budget. Density: d128_k12_h256_b4 keeps the best KL decisively (median 7.525e-5, 2.5x clear of the next cell) but its seed spread is 1.35x, outside the registered <= 1.2x. Unregistered and stronger than expected: at 3v3 the LOW EDGE does separate — d64_k12_h256_b4 [5.905e-4, 1.456e-3] lies entirely below the reference [1.554e-3, 1.699e-3], and d128_k12_h256_b4 [1.740e-3, 2.088e-3] entirely above it; lane D25"
+    note: "grades together with the re-read of B2/B3; the outcome decides whether BD3-BD5 run at a fold-chosen or a density-chosen production cell"
+  - id: B12
+    registered: 2026-09-19
+    wave: BD3
+    registered_before: "10 dynamics jobs submitted 2026-09-19 18:3x; nothing had run"
+    cells: [d128_k12_h256_b4, d64_k12_h256_b4]
+    axes: "lr 2e-4 / 1e-4 (vs 5e-4), batch 4096 at matched samples seen (219,727 steps), hypernet_activation ELU (C1 control vs SiLU), weight decay 1e-4 (vs 1e-6); 1 seed each"
+    readable_at_one_seed: "KL b500 and NLL only — the fold windows do not separate cells at 3 seeds (D25), so no fold effect will be read from this wave"
+    claim: "dynamics is a second-order axis next to capacity for this model. Lowering the lr improves the density at both cells (the FM lane's prior, and degree >= 64 changes the conditioning of the loss), but by less than the degree axis already bought; the ELU control is null (the C-infinity conditioner is not what makes this family work); batch 4096 at matched samples seen is null on KL"
+    bands:
+      lr_improves_kl: "KL(lr 2e-4 or 1e-4) <= 0.94x KL(5e-4) at both cells (outside the 1.06-1.08x KL seed spread)"
+      lr_effect_smaller_than_degree: "the best lr gain is < the 0.23x the degree axis bought"
+      elu_null: "KL(ELU) within 1.35x of KL(SiLU) at d128 and 1.09x at d64 (their measured KL spreads)"
+      batch_null: "KL(4096) within the same spreads"
+    falsified_if: "lower lr makes KL WORSE at both cells (then the DNF prefers the high lr and the FM prior does not transfer), or ELU moves KL by more than the cell's seed spread in either direction (then conditioner smoothness IS a lever and belongs in the capacity map, not the controls)"
+    status: "graded 2026-09-21 — FALSIFIED on its central band, the falsifier fired as written. Lower lr makes KL WORSE at BOTH cells, not better: d64_k12_h256_b4 1.13x (lr 1e-4) and 1.19x (2e-4), d128_k12_h256_b4 1.32x and 1.35x, every variant outside all three baseline seeds (band asked for <= 0.94x). The NLL says it louder at d128: 1.14027 / 1.14028 against a baseline of 1.13899, i.e. +12.8e-4, the whole density advantage of that cell erased. The FM lane's fold-prefers-low-lr prior does NOT transfer to this family. elu_null band: MET at d64 (1.05x, inside its 1.09x spread), marginally missed at d128 (1.38x vs the 1.35x spread, NLL +4.4e-4) - ELU is not a lever either way, SiLU stays. weight decay 1e-4: null at d64 (0.96x), worse at d128 (1.26x KL, NLL +3.4e-4). batch_null: UNTESTED, both batch-4096 cells hit the 8 h wall and were resumed (jobs 30392905/30392906); lane D26, D27"
+    note: "a >= 1.5x move on KL earns 3 seeds before it enters the lane at [M]; warmup 0.13 -> 0.05 (plan BD3's 6th axis) is NOT in this wave, the grid submitter has no warmup flag"
+  - id: B13
+    registered: 2026-09-21
+    revised: "2026-09-21, before submission — redesigned from a 1-D step ladder at n1e7 into a 2-D steps x data probe after the user rejected the 'data saturates' reading of B4. A step ladder run only at n1e7 would have repeated BD4's confound in the other direction."
+    wave: BD6 (step budget x data, the deconfounding probe)
+    registered_before: "not submitted; awaiting the user's go-ahead"
+    claim: "BD4 could not separate data from compute because it was compute-matched at a budget where the model is optimization-limited (D31, D32). Raising the step budget should (a) improve the density at BOTH data rungs, roughly as steps^-0.6 (the exponent implied by the only two step counts measured, 219,720 vs 878,906 at d128 = 0.43x KL, confounded with a batch change so it is a prior not a measurement), and (b) make the n1e8 rung PULL AHEAD of n1e7, because a model that can exploit more of its data has more to exploit at 1e8. If (b) holds, BD4's apparent saturation was a compute artifact and data scales as it should."
+    design: "d128_k12_h256_b4, step budget {1x, 2x, 4x} x 879k at BOTH n1e7 and n1e8, 1 seed each = 6 cells (the 1x rungs already exist at 3 seeds, so 4 new cells: 2x and 4x at each data size). Carry --batch-gather (provably neutral, 1.17x). Walls approx 7.5 h (2x) and 15 h (4x)."
+    bands:
+      kl_2x_over_1x: "<= 0.80 at BOTH data rungs (n1e7 8.67e-5 -> <= 6.9e-5; n1e8 7.53e-5 -> <= 6.0e-5)"
+      data_gap_opens: "KL(n1e8)/KL(n1e7) falls below 0.80 at the 4x budget, having been 0.87x (unresolved) at 1x"
+      no_overfit: "held-out nll.nll_mean does not RISE at any rung (at 4x the n1e7 arm sees its rows ~360 times)"
+    falsified_if: "KL at 2x steps is >= 0.95x the 879k baseline at both data rungs (the budget is saturated too, and the limit is capacity - go back to the degree/conditioner axes), OR the n1e8/n1e7 KL ratio does NOT fall as steps rise (the data axis is genuinely flat here and the D32 correction was over-cautious), OR the held-out NLL rises on the n1e7 arm while the n1e8 arm keeps improving (the n1e7 arm overfits, which would itself show the data axis is live)"
+    status: "graded 2026-09-23 — MOSTLY FAILS; its falsifier fired on the 2x clause. Band 1 (KL(2x)/KL(1x) <= 0.80 at both rungs) FAILS: 0.97x at n1e7 and 1.00x at n1e8, both inside the 1x seed spread, so 2x steps is null - and that is exactly the registered falsifier ('KL at 2x is >= 0.95x at both rungs -> the budget is saturated too and the limit is capacity; go back to the degree/conditioner axes'). Band 2, the decisive one (n1e8/n1e7 KL falling below 0.80 at 4x) NOT MET: the ratio is 0.868 / 0.895 / 0.860 at 1x / 2x / 4x - flat, no widening. Band 3 (no overfitting) PASSES cleanly: held-out NLL improves at 4x at both rungs even with ~360 passes over 1e7 rows. What the wave DID establish: 4x steps buys 0.83x KL and -3e-4 NLL at BOTH rungs, each outside its own 1x 3-seed range, i.e. KL ~ steps^-0.135, ~7x shallower than the FM fold's -0.95; and n1e8 leads n1e7 at every budget by a consistent ~13%, so the data axis is live but small and does not widen with compute. Conclusion: the binding constraint is CAPACITY; lane D34, D35, D36"
+    note: "read at 1 seed for KL/NLL only (D25); a >= 1.4x KL move earns 3 seeds. The 4x cells need --time-h 20 or a 2-stage chain."
