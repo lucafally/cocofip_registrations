@@ -61,8 +61,9 @@ archived here after those flows ran.
 
 Everything in this repository is published under the Creative Commons Attribution 4.0
 International license (`LICENSE`, CC BY 4.0). Releases are archived on Zenodo through its GitHub
-integration (`.zenodo.json` carries the deposit metadata); the DOI of the first release is added
-here once it exists.
+integration (`.zenodo.json` carries the deposit metadata). First release `sbibm-benchmark-2026-10-18`
+(GitHub, 2026-10-20 14:29 CEST): DOI [10.5281/zenodo.23499226](https://doi.org/10.5281/zenodo.23499226);
+concept DOI for all versions: [10.5281/zenodo.23499225](https://doi.org/10.5281/zenodo.23499225).
 
 ## Author
 
