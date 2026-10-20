@@ -54,7 +54,8 @@ archived here after those flows ran.
 - 2026-10-20, `f61f2b8`: the files moved into `sbibm_benchmark/`; license and Zenodo metadata
   added; registered-prediction files of other studies of the same code base, which are not part
   of this paper, were included as well.
-- 2026-10-21: those files removed; the repository holds the sbibm registration only.
+- 2026-10-20, `8fcd3b2` (later the same day): those files removed; the repository holds the sbibm
+  registration only.
 
 ## License and archive
 
